@@ -1,6 +1,6 @@
 // Listen for extension installation
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('LaTeX Auto extension installed');
+  console.log('LaTeX Auto Extension Installed');
 });
 
 // Listen for keyboard commands

@@ -1,37 +1,87 @@
-.latex-auto-popup {
-  position: absolute;
-  background: white;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  padding: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-  z-index: 10000;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  font-size: 14px;
-  display: none;
-}
-
-.latex-auto-popup button {
-  background: #4CAF50;
-  color: white;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
+.chat-container {
   display: flex;
+  flex-direction: column;
+  width: 30vw;
+  height: 100%;
   align-items: center;
-  gap: 6px;
+  border: 1px solid #374151;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  background-color: #171717;
+  color: #d4d4d4;
+  font-size: 0.875rem;
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
-.latex-auto-popup button:hover {
-  background: #45a049;
+.latex-input {
+  background-color: #171717;
+  font-size: 0.875rem;
+  color: white;
+  outline: none;
+  height: 30px;
+  width: 100%;
+  border: none;
+  padding: 0 8px;
 }
 
-.latex-auto-popup .shortcut {
-  background: #f0f0f0;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 12px;
-  color: #666;
-} 
+.latex-input:focus {
+  outline: none;
+  border: none;
+}
+
+.latex-input::placeholder {
+  color: #737373;
+}
+
+.footer {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.footer > * {
+  margin-right: 0.75rem;
+  align-content: space-between;
+}
+
+.close-text {
+  font-size: 0.75rem;
+  color: #737373;
+}
+
+.submit-button {
+  color: #737373;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+}
+
+.submit-button:hover {
+  color: white;
+}
+
+.latex-auto-edit {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1rem;
+    background-color: #171717;
+    color: #d4d4d4;
+    font-size: 0.875rem;
+    border-radius: 0.25rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    margin: 5px 0;
+    width: 100%;
+    cursor: pointer;
+}
+
+.latex-auto-edit > span {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1rem;
+    background-color: #171717;
+    color: #d4d4d4;
+}
