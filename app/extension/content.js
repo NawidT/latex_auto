@@ -7,7 +7,7 @@ document.head.appendChild(link);
 
 function App() {
   // STATE VARIABLES ------------------------------------------------------------
-  const edit_button = document.createElement('div');
+  const edit_button = document.createElement('div'); // BUG: this isnt attached to cm-scroller so when user scrolls, chat view stays fixed on screen
   const chat_selected = document.createElement('div');
   let current_user_input = '';
   let selectionRange = null;
@@ -167,12 +167,14 @@ function App() {
   latex_input.addEventListener('input', (e) => {
     current_user_input = e.target.value;
   });
-  latex_input.addEventListener('keydown', (e) => {
+  latex_input.addEventListener('keydown', async (e) => {
     e.stopPropagation(); // Prevent other handlers from capturing the input
     if (e.key === 'Enter') {
       e.preventDefault();
       console.log('Submit via Enter:', current_user_input);
-      update_selected_lines(current_user_input);
+      const resp = await chrome.runtime.sendMessage({ type: 'EDIT_TEXT', text: current_user_input });
+      console.log('Background Response:', resp);
+      update_selected_lines(resp.text);
       close_chat_selected();
     }
   });

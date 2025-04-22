@@ -17,9 +17,11 @@ chrome.commands.onCommand.addListener((command) => {
 });
 
 // Listen for messages from content script
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.type === 'EDIT_TEXT') {
-    handleEditText(request.text);
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'EDIT_TEXT') {
+    sendResponse({
+      text: "background said hi"
+    });
   }
   return true;
 });
