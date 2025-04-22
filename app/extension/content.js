@@ -69,7 +69,6 @@ function App() {
   function close_chat_selected() {
     positionElements(edit_button, selectionRange);
     chat_selected.style.display = 'none';
-    console.log('Closing chat:', current_user_input);
     current_user_input = ''; 
     latex_input.value = '';
     if (window.getSelection().toString().trim() !== '') {
@@ -87,9 +86,6 @@ function App() {
     const startNode = range.startContainer;
     const endNode = range.endContainer;
 
-    console.log('Start node:', startNode);
-    console.log('End node:', endNode);
-  
     const startLine = startNode.nodeType === 3 
       ? startNode.parentElement.closest('.cm-line') 
       : startNode.closest('.cm-line');
@@ -97,9 +93,6 @@ function App() {
     const endLine = endNode.nodeType === 3 
       ? endNode.parentElement.closest('.cm-line') 
       : endNode.closest('.cm-line');
-
-    console.log('Start line:', startLine);
-    console.log('End line:', endLine);
   
     if (!startLine || !endLine) return [];
   
@@ -117,28 +110,52 @@ function App() {
 
   // @param new_code: large string of code, lines are separated by \n.
   function update_selected_lines(new_code) {
-    new_code_lines = new_code.split('\n');
+    new_code_lines = new_code.split('\\n');
+    console.log('New code lines:', new_code_lines);
     diff = new_code_lines.length - selectedLines.length;
-    // convert swap selectedLines innerText to new_code_lines
+    // handle case where new code has less or equal lines than selected lines
     selectedLines.forEach((line, index) => {
-      if (index < selectedLines.length) {
-        selectedLines[index].innerText = line;
+      if (index < new_code_lines.length) {
+        line.innerText = new_code_lines[index];
+      } else {
+        line.innerText = "";
       }
     });
+    // handle case where new code has more lines than selected lines
     if (diff > 0) {
+      // find start in document 
+      let kids = Array.from(document.getElementsByClassName("cm-content cm-lineWrapping")[0].children);
+      // find index of first new line in kids
+      let start_index = 0;
+      kids.forEach((kid, index) => {
+        if (kid === selectedLines[selectedLines.length - 1]) {
+          start_index = index;
+          return;
+        }
+      });
+      kids_to_add = []
       // add new lines
       for (let i = 0; i < diff; i++) {
         const new_line = document.createElement('div');
         new_line.className = 'cm-line';
         new_line.innerText = new_code_lines[selectedLines.length + i];
-        selectedLines.push(new_line);
+        // insert new line into document at index start_index + i
+        kids_to_add.push(new_line);
+        console.log('Kids to add:', kids_to_add);
       }
-    } else if (diff < 0) {
-      // remove lines
-      for (let i = 0; i < diff; i++) {
-        document.removeChild(selectedLines[selectedLines.length - 1]);
-        selectedLines.pop();
+      kids = kids.slice(0, start_index + 1).concat(kids_to_add).concat(kids.slice(start_index + 1));
+      console.log('Kids:', kids.length);
+      // Replace the children with the new set of nodes
+      const container = document.getElementsByClassName("cm-content cm-lineWrapping")[0];
+      // Clear existing children
+      while (container.firstChild) {
+        container.removeChild(container.firstChild);
       }
+      // Append all new children
+      kids.forEach(kid => {
+        container.appendChild(kid);
+      });
+      console.log('Main Content:', document.getElementsByClassName("cm-content cm-lineWrapping")[0].children.length);
     }
   }
 
@@ -155,6 +172,7 @@ function App() {
     if (e.key === 'Enter') {
       e.preventDefault();
       console.log('Submit via Enter:', current_user_input);
+      update_selected_lines(current_user_input);
       close_chat_selected();
     }
   });
@@ -192,9 +210,6 @@ function App() {
       if (selectedText) {
         open_chat_selected();
       }
-    }
-    if (e.key === 'Enter') {
-      close_chat_selected();
     }
   });
 
