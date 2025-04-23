@@ -12,6 +12,7 @@ async function hitOAI(messages) {
     })
   });
   const data = await response.json();
+  
   console.log('OpenAI Response:', data.choices[0].message.content);
   return data.choices[0].message.content;
 }
@@ -144,8 +145,9 @@ function getCheckAutocompleteNeededPrompt(all_text) {
   Here is the entire LaTeX codebase:
   ${all_text}
 
-  RETURN ONLY "yes" OR "no"
-  `
+  RETURN ONLY "yes" OR "no". If you are unsure, return "no". 
+  Only return "yes" if you are very confident that a meaningful and relevant autocomplete is needed.
+`
 }
 
 

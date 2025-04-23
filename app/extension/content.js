@@ -16,7 +16,6 @@ function App() {
 
   let current_line = null; // this is the ELEMENT of the current line (cm-line)
   let last_autocompleted_line = null;
-  let ac_response = null;
 
   let change_since_autocomplete = false;
   let has_autocomplete_been_triggered = false;
@@ -145,10 +144,10 @@ function App() {
     }
   }
 
-  function get_remaining_complete() {
+  function get_remaining_complete(last_autocompleted_line) {
     for (let i = 0; i < current_line.innerText.length; i++) {
-      if (current_line.innerText[i] !== ac_response.text[i]) {
-        return ac_response.text.slice(i);
+      if (current_line.innerText[i] !== last_autocompleted_line[i]) {
+        return last_autocompleted_line.slice(i);
       }
     }
     return "";
@@ -157,26 +156,23 @@ function App() {
   async function handle_autocomplete() {
     last_autocompleted_line = null;
     has_autocomplete_been_triggered = false;
-    // get the current line
     if (current_line.innerText == "") { 
       return null;
     }
     change_since_autocomplete = false;
-    console.log('Before:', window.getSelection().anchorOffset);
-    ac_response = await chrome.runtime.sendMessage({ type: 'AUTOCOMPLETE', text: current_line.innerText});
-    if (ac_response.text === '' 
+    const response = await chrome.runtime.sendMessage({ type: 'AUTOCOMPLETE', text: current_line.innerText});
+    if (response.text === '' 
       || current_line == null // check if current line is null case when user triggered autocomplete before background responded
       || change_since_autocomplete // handles case where user moved to another line before background responded
-      || ac_response.completed_line != current_line.innerText // handles case where user moved to another line before background responded or changed current line text
-      || current_line.innerText === ac_response.text.trim() // handles case where autocomplete is not needed
+      || response.completed_line != current_line.innerText // handles case where user moved to another line before background responded or changed current line text
+      || current_line.innerText === response.text.trim() // handles case where autocomplete is not needed
       || current_line.innerText.includes(" %%% ") // handles case where autocomplete is already applied
     ) {
       return null;
     }
-    last_autocompleted_line = ac_response.text.trim();
-    remaining_complete = get_remaining_complete();
+    last_autocompleted_line = response.text.trim();
+    let remaining_complete = get_remaining_complete(last_autocompleted_line);
     current_line.innerText += " %%% " + remaining_complete;
-    console.log('After:', window.getSelection().anchorOffset);
   }
 
   function trigger_autocomplete() {
@@ -194,7 +190,7 @@ function App() {
   }
 
   function trigger_edit(selection, selectedText) {
-    console.log('Selected text:', selectedText);
+    console.log('Trigger edit function called');
     chrome.runtime.sendMessage({ type: 'UPDATE_CODE_SNIPPET', text: selectedText });
     selectedLines = getSelectedCmLines();
     selectionRange = selection.getRangeAt(0);
@@ -250,21 +246,24 @@ function App() {
     close_chat_selected();
   });
 
-  document.addEventListener('mousedown', async (e) => {
+  document.addEventListener('mouseup', async (e) => {
     if (edit_button.style.display === 'block' && !edit_button.contains(e.target)) {
       edit_button.style.display = 'none';
     } else {
-      setTimeout(async () => {
-        remove_autocompleted_text();
-        current_line = e.target.closest('.cm-line');
+      remove_autocompleted_text();
+      current_line = e.target.closest('.cm-line');
+      
+      // Add a small delay to ensure text selection is complete
+      setTimeout(() => {
         const selection = window.getSelection();
         selectedText = selection.toString().trim();
+        console.log('Selected text:', selectedText);
         if (selectedText !== '') {
           trigger_edit(selection, selectedText);
         } else {
-          await handle_autocomplete();
+          handle_autocomplete();
         }
-      }, 100); 
+      }, 100); // 100ms delay to allow selection to complete
     }
   });
 
@@ -287,8 +286,6 @@ function App() {
       }
     }
   });
-
- 
 
   // every 10 seconds, update all_text
   setInterval(async() => {
