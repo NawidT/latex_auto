@@ -130,43 +130,6 @@ function App() {
         line.innerText = remaining_lines_str;
       }
     });
-    // handle case where new code has more lines than selected lines
-  //   if (diff > 0) {
-  //     console.log('Diff:', diff);
-  //     // find start in document 
-  //     let kids = Array.from(document.getElementsByClassName("cm-content cm-lineWrapping")[0].children);
-  //     // find index of first new line in kids
-  //     let start_index = 0;
-  //     kids.forEach((kid, index) => {
-  //       if (kid === selectedLines[selectedLines.length - 1]) {
-  //         start_index = index;
-  //         return;
-  //       }
-  //     });
-  //     kids_to_add = []
-  //     // add new lines
-  //     for (let i = 0; i < diff; i++) {
-  //       const new_line = document.createElement('div');
-  //       new_line.className = 'cm-line';
-  //       new_line.innerText = new_code_lines[selectedLines.length + i];
-  //       // insert new line into document at index start_index + i
-  //       kids_to_add.push(new_line);
-  //       console.log('Kids to add:', kids_to_add);
-  //     }
-  //     kids = kids.slice(0, start_index + 1).concat(kids_to_add).concat(kids.slice(start_index + 1));
-  //     console.log('Kids:', kids.length);
-  //     // Replace the children with the new set of nodes
-  //     const container = document.getElementsByClassName("cm-content cm-lineWrapping")[0];
-  //     // Clear existing children
-  //     while (container.firstChild) {
-  //       container.removeChild(container.firstChild);
-  //     }
-  //     // Append all new children
-  //     kids.forEach(kid => {
-  //       container.appendChild(kid);
-  //     });
-  //     console.log('Main Content:', document.getElementsByClassName("cm-content cm-lineWrapping")[0].children.length);
-  //   }
   }
 
 

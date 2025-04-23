@@ -11,4 +11,7 @@ This application provides intelligent autocompletion for LaTeX documents with an
 - **Bibliography Integration**: Autocompletes citations from your bibliography files
 - **Customizable Suggestions**: Adapt the suggestion engine to your writing style
 
-## Installation
+## Next Steps
+- Update the UI to have a loading icon during API calls
+- Do the whole autocomplete text
+- Handle ingesting and use better prompts
