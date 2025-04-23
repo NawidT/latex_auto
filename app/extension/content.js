@@ -110,53 +110,63 @@ function App() {
 
   // @param new_code: large string of code, lines are separated by \n.
   function update_selected_lines(new_code) {
-    new_code_lines = new_code.split('\\n');
+    new_code = new_code.trim();
+    new_code_lines = new_code.split('\n');
     console.log('New code lines:', new_code_lines);
     diff = new_code_lines.length - selectedLines.length;
-    // handle case where new code has less or equal lines than selected lines
+    
     selectedLines.forEach((line, index) => {
-      if (index < new_code_lines.length) {
-        line.innerText = new_code_lines[index];
+      if (index < selectedLines.length - 1) {
+        if (index < new_code_lines.length) { 
+          line.innerText = new_code_lines[index];
+        } else { // case where new code has less lines than selected
+          line.innerText = "";
+        }
       } else {
-        line.innerText = "";
+        // case where new code has more lines than selected
+        // grab the new code lines remaining
+        let remaining_lines = new_code_lines.slice(index);
+        let remaining_lines_str = remaining_lines.join('\n');
+        line.innerText = remaining_lines_str;
       }
     });
     // handle case where new code has more lines than selected lines
-    if (diff > 0) {
-      // find start in document 
-      let kids = Array.from(document.getElementsByClassName("cm-content cm-lineWrapping")[0].children);
-      // find index of first new line in kids
-      let start_index = 0;
-      kids.forEach((kid, index) => {
-        if (kid === selectedLines[selectedLines.length - 1]) {
-          start_index = index;
-          return;
-        }
-      });
-      kids_to_add = []
-      // add new lines
-      for (let i = 0; i < diff; i++) {
-        const new_line = document.createElement('div');
-        new_line.className = 'cm-line';
-        new_line.innerText = new_code_lines[selectedLines.length + i];
-        // insert new line into document at index start_index + i
-        kids_to_add.push(new_line);
-        console.log('Kids to add:', kids_to_add);
-      }
-      kids = kids.slice(0, start_index + 1).concat(kids_to_add).concat(kids.slice(start_index + 1));
-      console.log('Kids:', kids.length);
-      // Replace the children with the new set of nodes
-      const container = document.getElementsByClassName("cm-content cm-lineWrapping")[0];
-      // Clear existing children
-      while (container.firstChild) {
-        container.removeChild(container.firstChild);
-      }
-      // Append all new children
-      kids.forEach(kid => {
-        container.appendChild(kid);
-      });
-      console.log('Main Content:', document.getElementsByClassName("cm-content cm-lineWrapping")[0].children.length);
-    }
+  //   if (diff > 0) {
+  //     console.log('Diff:', diff);
+  //     // find start in document 
+  //     let kids = Array.from(document.getElementsByClassName("cm-content cm-lineWrapping")[0].children);
+  //     // find index of first new line in kids
+  //     let start_index = 0;
+  //     kids.forEach((kid, index) => {
+  //       if (kid === selectedLines[selectedLines.length - 1]) {
+  //         start_index = index;
+  //         return;
+  //       }
+  //     });
+  //     kids_to_add = []
+  //     // add new lines
+  //     for (let i = 0; i < diff; i++) {
+  //       const new_line = document.createElement('div');
+  //       new_line.className = 'cm-line';
+  //       new_line.innerText = new_code_lines[selectedLines.length + i];
+  //       // insert new line into document at index start_index + i
+  //       kids_to_add.push(new_line);
+  //       console.log('Kids to add:', kids_to_add);
+  //     }
+  //     kids = kids.slice(0, start_index + 1).concat(kids_to_add).concat(kids.slice(start_index + 1));
+  //     console.log('Kids:', kids.length);
+  //     // Replace the children with the new set of nodes
+  //     const container = document.getElementsByClassName("cm-content cm-lineWrapping")[0];
+  //     // Clear existing children
+  //     while (container.firstChild) {
+  //       container.removeChild(container.firstChild);
+  //     }
+  //     // Append all new children
+  //     kids.forEach(kid => {
+  //       container.appendChild(kid);
+  //     });
+  //     console.log('Main Content:', document.getElementsByClassName("cm-content cm-lineWrapping")[0].children.length);
+  //   }
   }
 
 
@@ -164,18 +174,35 @@ function App() {
   edit_button.onclick = () => {
     open_chat_selected();
   };
-  latex_input.addEventListener('input', (e) => {
+  latex_input.addEventListener('input', (e) => { 
     current_user_input = e.target.value;
   });
   latex_input.addEventListener('keydown', async (e) => {
-    e.stopPropagation(); // Prevent other handlers from capturing the input
     if (e.key === 'Enter') {
       e.preventDefault();
       console.log('Submit via Enter:', current_user_input);
-      const resp = await chrome.runtime.sendMessage({ type: 'EDIT_TEXT', text: current_user_input });
-      console.log('Background Response:', resp);
-      update_selected_lines(resp.text);
-      close_chat_selected();
+      try {
+        // Use a simpler approach with a timeout to ensure the message port stays open
+        const response = await new Promise((resolve) => {
+          chrome.runtime.sendMessage({ type: 'EDIT_TEXT', text: current_user_input }, (response) => {
+            if (chrome.runtime.lastError) {
+              console.error('Error sending message:', chrome.runtime.lastError);
+              resolve({ text: "Error: " + chrome.runtime.lastError.message });
+            } else {
+              console.log('Message sent successfully, got response:', response);
+              resolve(response);
+            }
+          });
+        });
+        
+        console.log('Background Response:', response);
+        if (response && response.text) {
+          update_selected_lines(response.text);
+          close_chat_selected();
+        }
+      } catch (error) {
+        console.error('Failed to send message to background script:', error);
+      }
     }
   });
 
@@ -193,6 +220,7 @@ function App() {
       const selection = window.getSelection();
       selectedText = selection.toString().trim();
       if (selectedText) {
+        chrome.runtime.sendMessage({ type: 'UPDATE_CODE_SNIPPET', text: selectedText });
         console.log('Selected text:', selectedText);
         selectedLines = getSelectedCmLines();
         console.log('Selected lines:', selectedLines);
@@ -207,8 +235,9 @@ function App() {
 
   // Handle keyboard shortcut
   document.addEventListener('keydown', (e) => {
-    e.preventDefault();
+    // Only prevent default for our specific shortcut
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault();
       if (selectedText) {
         open_chat_selected();
       }
@@ -221,14 +250,6 @@ function App() {
       edit_button.style.display = 'none';
     }
   });
-
-  // Listen for messages from the background script
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.type === 'GET_SELECTION') {
-      sendResponse({ text: selectedText });
-    }
-    return true;
-  }); 
 
 }
 
