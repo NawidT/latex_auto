@@ -13,9 +13,13 @@ function App() {
   let selectionRange = null;
   let selectedLines = [];
   let all_text = "";
+
   let current_line = null; // this is the ELEMENT of the current line (cm-line)
   let last_autocompleted_line = null;
-  let old_current_line = null;
+  let ac_response = null;
+
+  let change_since_autocomplete = false;
+  let has_autocomplete_been_triggered = false;
 
   // ELEMENTS --------------------------------------------------------------------
   edit_button.innerHTML =`
@@ -81,16 +85,6 @@ function App() {
     }
   }
 
-  function getCurrentCmLine() {
-    const selection = window.getSelection();
-    const range = selection.getRangeAt(0);
-    const startNode = range.startContainer;
-    const startLine = startNode.nodeType === 3 
-      ? startNode.parentElement.closest('.cm-line') 
-      : startNode.closest('.cm-line');
-    return startLine;
-  }
-
   function getSelectedCmLines() {
     const selection = window.getSelection();
     if (!selection.rangeCount) return [];
@@ -144,46 +138,52 @@ function App() {
       }
     });
   }
-  
+
+  function remove_autocompleted_text() {
+    if (current_line != null) {
+      current_line.innerText = current_line.innerText.replace(/ %%% .*/, '');
+    }
+  }
 
   async function handle_autocomplete() {
-    let autocompleted_line = "";
-    edit_button.style.display = 'none';
-    if (current_line != null && old_current_line != null) { // remove the autocompleted part from the current line 
-      current_line.innerText = old_current_line;
-      old_current_line = null;
-      last_autocompleted_line = null;
-    }
+    last_autocompleted_line = null;
+    has_autocomplete_been_triggered = false;
     // get the current line
-    current_line = getCurrentCmLine();
-    console.log('Current line:', current_line.innerText);
-    if (current_line.innerText == "") {
-      return;
+    if (current_line.innerText == "") { 
+      return null;
     }
-    const response = await chrome.runtime.sendMessage({ type: 'AUTOCOMPLETE', text: current_line.innerText});
-    console.log('Background Response:', response.text);
-    if (response.text === '') {
-      return;
+    change_since_autocomplete = false;
+    console.log('Before:', window.getSelection().anchorOffset);
+    ac_response = await chrome.runtime.sendMessage({ type: 'AUTOCOMPLETE', text: current_line.innerText});
+    if (ac_response.text === '' 
+      || current_line == null // check if current line is null case when user triggered autocomplete before background responded
+      || change_since_autocomplete // handles case where user moved to another line before background responded
+      || ac_response.completed_line != current_line.innerText // handles case where user moved to another line before background responded or changed current line text
+      || current_line.innerText === ac_response.text.trim() // handles case where autocomplete is not needed
+      || current_line.innerText.includes(" %%% ") // handles case where autocomplete is already applied
+    ) {
+      return null;
     }
-    autocompleted_line = response.text;
-    console.log('Autocompleted line:', autocompleted_line);
-    last_autocompleted_line = autocompleted_line.trim();
-    if (last_autocompleted_line === current_line.innerText) {
-      return;
-    }
-    old_current_line = current_line.innerText;
-    current_line.innerText += " % " + last_autocompleted_line;
+    last_autocompleted_line = ac_response.text.trim();
+    current_line.innerText += " %%% " + last_autocompleted_line;
+    console.log('After:', window.getSelection().anchorOffset);
   }
 
   function trigger_autocomplete() {
-    current_line.innerText = last_autocompleted_line;
-    old_current_line = current_line.innerText;
-    last_autocompleted_line = null;
-    old_current_line = null;
+    if (current_line?.innerText.includes(" %%% ")) {
+      if (last_autocompleted_line.includes(current_line.innerText)) {
+        current_line.innerText = last_autocompleted_line;
+      } else {
+        current_line.innerText = current_line.innerText.replace(/ %%% .*/, '') + last_autocompleted_line;
+      }
+      last_autocompleted_line = null;
+      current_line = null;
+      has_autocomplete_been_triggered = true;
+      change_since_autocomplete = true;
+    }
   }
 
-
-  function handle_trigger_edit(selection, selectedText) {
+  function trigger_edit(selection, selectedText) {
     console.log('Selected text:', selectedText);
     chrome.runtime.sendMessage({ type: 'UPDATE_CODE_SNIPPET', text: selectedText });
     selectedLines = getSelectedCmLines();
@@ -240,41 +240,45 @@ function App() {
     close_chat_selected();
   });
 
-  // Handle text selection
-  document.addEventListener('mouseup', async (e) => {
-    setTimeout(async () => {
-      const selection = window.getSelection();
-      selectedText = selection.toString().trim();
-      if (selectedText) {
-        handle_trigger_edit(selection, selectedText);
-      } else {
-        await handle_autocomplete();
-      }
-
-    }, 10); // Small timeout to ensure selection is complete
+  document.addEventListener('mousedown', async (e) => {
+    if (edit_button.style.display === 'block' && !edit_button.contains(e.target)) {
+      edit_button.style.display = 'none';
+    } else {
+      setTimeout(async () => {
+        remove_autocompleted_text();
+        current_line = e.target.closest('.cm-line');
+        const selection = window.getSelection();
+        selectedText = selection.toString().trim();
+        if (selectedText !== '') {
+          trigger_edit(selection, selectedText);
+        } else {
+          await handle_autocomplete();
+        }
+      }, 100); 
+    }
   });
 
   // Handle keyboard shortcut
-  document.addEventListener('keydown', (e) => {
-    // Only prevent default for our specific shortcut
+  document.addEventListener('keydown',(e) => {
+    change_since_autocomplete = true;
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
       e.preventDefault();
-      if (selectedText) {
+      if (window.getSelection().toString().trim() !== '') {
         open_chat_selected();
       }
     } else if (e.key === 'Escape') {
-      close_chat_selected();
-    } else if (e.key === 'Tab' && last_autocompleted_line != null) {
       e.preventDefault();
-      trigger_autocomplete();
+      close_chat_selected();
+    // autocomplete when right arrow key is pressed
+    } else if (e.key === 'ArrowRight') {
+      // Only trigger autocomplete if current_line exists and contains an autocomplete suggestion
+      if (current_line && current_line.innerText.includes(" %%% ")) {
+        trigger_autocomplete();
+      }
     }
   });
 
-  document.addEventListener('mousedown', (e) => {
-    if (!edit_button.contains(e.target)) {
-      edit_button.style.display = 'none';
-    }
-  });
+ 
 
   // every 10 seconds, update all_text
   setInterval(async() => {

@@ -48,13 +48,12 @@ function OverleafCursor() {
         new_text += lines[i] + "\n";
       }
     }
-
-    const validation = getCheckAutocompleteNeededPrompt(current_line, all_text);
+    const validation = getCheckAutocompleteNeededPrompt(all_text);
     let validation_response = await hitOAI([{role: 'user', content: validation}]);
     if (validation_response === "yes") {
-      const prompt = getAutoCompletePrompt(current_line, new_text);
+      const prompt = getAutoCompletePrompt(new_text);
       let response = await hitOAI([{role: 'user', content: prompt}]);
-      response = response.replace('```latex', '').replace('```', '').trim();
+      response = response.replace('```latex', '').replace('```', '').trim().replace('`', '').replace('"', '');
       return response;
     } else {
       return "";
@@ -86,7 +85,7 @@ function OverleafCursor() {
     } else if (message.type === 'AUTOCOMPLETE') {
       handle_autocomplete(message.text)
         .then(response => {
-          sendResponse({ text: response });
+          sendResponse({ text: response, completed_line: message.text });
         })
         .catch(error => {
           console.error('Error processing autocomplete request:', error);
@@ -117,7 +116,30 @@ function getEditPrompt(code_snippet, user_request) {
 function getCheckAutocompleteNeededPrompt(all_text) {
   return `
   You are a LaTeX expert. Based on the LaTeX codebase and highlighted area using dashes, determine if the an autocomplete is needed.
-  Return "yes" if the an autocomplete is needed, otherwise return "no".
+  Return "yes" if the an autocomplete is needed, otherwise return "no". Do not repeat code that is nearby the highlighted area.
+  Be very greedy with how many times you return "yes".
+
+  Example1:
+  all_text = """
+  \documentclass{article}
+  \begin{document}
+  ------- AUTOCOMPLETE START ---------
+  Hello, wo {paste the autocomplete here}
+  ------- AUTOCOMPLETE END ---------
+  \end{document}
+  """
+  Returns: "yes"
+
+  Example2:
+  all_text = """
+  \documentclass{article}
+  \begin{document}
+  ------- AUTOCOMPLETE START ---------
+  Hello, world! {paste the autocomplete here}
+  ------- AUTOCOMPLETE END ---------
+  \end{document}
+  """
+  Returns: "no"
 
   Here is the entire LaTeX codebase:
   ${all_text}
@@ -127,13 +149,40 @@ function getCheckAutocompleteNeededPrompt(all_text) {
 }
 
 
-function getAutoCompletePrompt(current_line, all_text) {
+function getAutoCompletePrompt(all_text) {
   return `
-  You are a LaTeX expert. Based on the current line of code, suggest a completion for the line highlighted by dashes.
+  You are a LaTeX expert. Based on the entire latex codebase, suggest a completion for the line highlighted by dashes.
+  Consider the entire latex codebase. Make the changes small. Make sure the change doesn't conflict with the rest of the codebase.
+  Make sure the change doesn't break the code.
+
+  Example1:
+  all_text = """
+  \documentclass{article}
+  \begin{document}
+  ------- AUTOCOMPLETE START ---------
+  Hello, wo {paste the autocomplete here}
+  ------- AUTOCOMPLETE END ---------
+  \end{document}
+  """
+  Returns: "rld!"
+
+  Example2:
+  all_text = """
+  \documentclass{article}
+  \begin{document}
+  ------- AUTOCOMPLETE START ---------
+  Hello, world! {paste the autocomplete here}
+  ------- AUTOCOMPLETE END ---------
+  \end{document}
+  """
+  Returns: ""
+
+
   The entire latex codebase:
   ${all_text}
 
-  RETURN ONLY ONE LINE OF LATEX CODE AS A STRING.
+  RETURN ONLY ONE LINE OF LATEX CODE AS A STRING. 
+  RETURN ONLY THE NEW PIECES OF CODE THAT NEED TO BE ADDED.
   `
 }
 
