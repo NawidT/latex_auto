@@ -15,3 +15,4 @@ This application provides intelligent autocompletion for LaTeX documents with an
 - Update the UI to have a loading icon during API calls
 - Do the whole autocomplete text
 - Handle ingesting and use better prompts
+- All Texts aren't actually "all" due to Code Mirror UI optimizations

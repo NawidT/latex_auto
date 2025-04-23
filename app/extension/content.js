@@ -12,7 +12,11 @@ function App() {
   let current_user_input = '';
   let selectionRange = null;
   let selectedLines = [];
-  
+  let all_text = "";
+  let current_line = null; // this is the ELEMENT of the current line (cm-line)
+  let last_autocompleted_line = null;
+  let old_current_line = null;
+
   // ELEMENTS --------------------------------------------------------------------
   edit_button.innerHTML =`
       <button class="latex-auto-edit">
@@ -33,13 +37,13 @@ function App() {
       />
       <div class="footer">
         <span class="close-text">Esc to close</span>
-        <button id="latex-submit" class="latex-submit">&times;</button>
+        <button id="latex-close" class="latex-close">&times;</button>
       </div>
     </div>
   `;
 
   const latex_input = chat_selected.getElementsByClassName("latex-input")[0];
-  const latex_submit = chat_selected.getElementsByClassName("latex-submit")[0];
+  const latex_close = chat_selected.getElementsByClassName("latex-close")[0];
 
   // FUNCTIONS -------------------------------------------------------------------
 
@@ -55,7 +59,6 @@ function App() {
     element.style.zIndex = '9999';
     document.body.appendChild(element);
   }
-
   let elements = [edit_button, chat_selected];
   elements.forEach(handle_elem_init);
 
@@ -76,6 +79,16 @@ function App() {
     } else {
       edit_button.style.display = 'none';
     }
+  }
+
+  function getCurrentCmLine() {
+    const selection = window.getSelection();
+    const range = selection.getRangeAt(0);
+    const startNode = range.startContainer;
+    const startLine = startNode.nodeType === 3 
+      ? startNode.parentElement.closest('.cm-line') 
+      : startNode.closest('.cm-line');
+    return startLine;
   }
 
   function getSelectedCmLines() {
@@ -131,7 +144,82 @@ function App() {
       }
     });
   }
+  
 
+  async function handle_autocomplete() {
+    let autocompleted_line = "";
+    edit_button.style.display = 'none';
+    if (current_line != null && old_current_line != null) { // remove the autocompleted part from the current line 
+      current_line.innerText = old_current_line;
+      old_current_line = null;
+      last_autocompleted_line = null;
+    }
+    // get the current line
+    current_line = getCurrentCmLine();
+    console.log('Current line:', current_line.innerText);
+    if (current_line.innerText == "") {
+      return;
+    }
+    const response = await chrome.runtime.sendMessage({ type: 'AUTOCOMPLETE', text: current_line.innerText});
+    console.log('Background Response:', response.text);
+    if (response.text === '') {
+      return;
+    }
+    autocompleted_line = response.text;
+    console.log('Autocompleted line:', autocompleted_line);
+    last_autocompleted_line = autocompleted_line.trim();
+    if (last_autocompleted_line === current_line.innerText) {
+      return;
+    }
+    old_current_line = current_line.innerText;
+    current_line.innerText += " % " + last_autocompleted_line;
+  }
+
+  function trigger_autocomplete() {
+    current_line.innerText = last_autocompleted_line;
+    old_current_line = current_line.innerText;
+    last_autocompleted_line = null;
+    old_current_line = null;
+  }
+
+
+  function handle_trigger_edit(selection, selectedText) {
+    console.log('Selected text:', selectedText);
+    chrome.runtime.sendMessage({ type: 'UPDATE_CODE_SNIPPET', text: selectedText });
+    selectedLines = getSelectedCmLines();
+    selectionRange = selection.getRangeAt(0);
+    positionElements(edit_button, selectionRange);
+    edit_button.style.display = 'block';
+  }
+
+  async function handle_edit_text() {
+    console.log('Submit via Enter:', current_user_input);
+    const close_text = chat_selected.getElementsByClassName("close-text")[0];
+    close_text.innerText = 'Loading...';
+    try {
+      // Use a simpler approach with a timeout to ensure the message port stays open
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ type: 'EDIT_TEXT', text: current_user_input }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error('Error sending message:', chrome.runtime.lastError);
+            resolve({ text: "Error: " + chrome.runtime.lastError.message });
+          } else {
+            console.log('Message sent successfully, got response:', response);
+            resolve(response);
+          }
+        });
+      });
+      
+      console.log('Background Response:', response);
+      if (response && response.text) {
+        update_selected_lines(response.text);
+        close_chat_selected();
+      }
+    } catch (error) {
+      console.error('Failed to send message to background script:', error);
+    }
+    close_text.innerText = 'Esc to close';
+  }
 
   // EVENT LISTENERS -------------------------------------------------------------
   edit_button.onclick = () => {
@@ -143,56 +231,26 @@ function App() {
   latex_input.addEventListener('keydown', async (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      console.log('Submit via Enter:', current_user_input);
-      try {
-        // Use a simpler approach with a timeout to ensure the message port stays open
-        const response = await new Promise((resolve) => {
-          chrome.runtime.sendMessage({ type: 'EDIT_TEXT', text: current_user_input }, (response) => {
-            if (chrome.runtime.lastError) {
-              console.error('Error sending message:', chrome.runtime.lastError);
-              resolve({ text: "Error: " + chrome.runtime.lastError.message });
-            } else {
-              console.log('Message sent successfully, got response:', response);
-              resolve(response);
-            }
-          });
-        });
-        
-        console.log('Background Response:', response);
-        if (response && response.text) {
-          update_selected_lines(response.text);
-          close_chat_selected();
-        }
-      } catch (error) {
-        console.error('Failed to send message to background script:', error);
-      }
+      await handle_edit_text();
     }
   });
 
-  latex_submit.addEventListener('click', (e) => {
+  latex_close.addEventListener('click', (e) => {
     e.preventDefault();
-    console.log('Submit via button:', current_user_input);
-    const selectedLines = getSelectedCmLines();
-    console.log('Selected lines:', selectedLines);
     close_chat_selected();
   });
 
   // Handle text selection
-  document.addEventListener('mouseup', (e) => {
-    setTimeout(() => {
+  document.addEventListener('mouseup', async (e) => {
+    setTimeout(async () => {
       const selection = window.getSelection();
       selectedText = selection.toString().trim();
       if (selectedText) {
-        chrome.runtime.sendMessage({ type: 'UPDATE_CODE_SNIPPET', text: selectedText });
-        console.log('Selected text:', selectedText);
-        selectedLines = getSelectedCmLines();
-        console.log('Selected lines:', selectedLines);
-        selectionRange = selection.getRangeAt(0);
-        positionElements(edit_button, selectionRange);
-        edit_button.style.display = 'block';
+        handle_trigger_edit(selection, selectedText);
       } else {
-        edit_button.style.display = 'none';
+        await handle_autocomplete();
       }
+
     }, 10); // Small timeout to ensure selection is complete
   });
 
@@ -204,9 +262,13 @@ function App() {
       if (selectedText) {
         open_chat_selected();
       }
+    } else if (e.key === 'Escape') {
+      close_chat_selected();
+    } else if (e.key === 'Tab' && last_autocompleted_line != null) {
+      e.preventDefault();
+      trigger_autocomplete();
     }
   });
-
 
   document.addEventListener('mousedown', (e) => {
     if (!edit_button.contains(e.target)) {
@@ -214,6 +276,11 @@ function App() {
     }
   });
 
+  // every 10 seconds, update all_text
+  setInterval(async() => {
+    all_text = document.getElementsByClassName("cm-content cm-lineWrapping")[0]?.innerText;
+    chrome.runtime.sendMessage({ type: 'UPDATE_ALL_TEXT', text: all_text });
+  }, 10000);
 }
 
 App();

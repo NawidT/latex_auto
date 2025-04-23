@@ -12,7 +12,7 @@ async function hitOAI(messages) {
     })
   });
   const data = await response.json();
-  console.log('OpenAI Response:', data);
+  console.log('OpenAI Response:', data.choices[0].message.content);
   return data.choices[0].message.content;
 }
 
@@ -23,17 +23,42 @@ function OverleafCursor() {
   let current_code_snippet = "";
 
 
-
   // HANDLING FUNCTIONS ----------------------------------------------------------
   async function handle_edit_text(user_request) {
     const prompt = getEditPrompt(current_code_snippet, user_request);
-    console.log('Prompt:', prompt);
     msg_chain.push({ role: 'user', content: prompt });
     let response = await hitOAI(msg_chain);
     // remove the ```latex and ``` from the response
     response = response.replace('```latex', '').replace('```', '');
     msg_chain.push({ role: 'assistant', content: response });
     return response;
+  }
+
+  async function handle_autocomplete(current_line) {
+    const lines = all_text.split('\n');
+    let new_text = "";
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i] === current_line) {
+        new_text += "----------------- AUTOCOMPLETE START ---------------------\n";
+        new_text += lines[i] + "{paste the autocomplete here}" + "\n";
+        new_text += "----------------- AUTOCOMPLETE END ---------------------\n";
+      } else if (lines[i].trim() === "") {
+        new_text += "";
+      } else {
+        new_text += lines[i] + "\n";
+      }
+    }
+
+    const validation = getCheckAutocompleteNeededPrompt(current_line, all_text);
+    let validation_response = await hitOAI([{role: 'user', content: validation}]);
+    if (validation_response === "yes") {
+      const prompt = getAutoCompletePrompt(current_line, new_text);
+      let response = await hitOAI([{role: 'user', content: prompt}]);
+      response = response.replace('```latex', '').replace('```', '').trim();
+      return response;
+    } else {
+      return "";
+    }
   }
 
   // CHROME LISTENERS ------------------------------------------------------------
@@ -44,25 +69,31 @@ function OverleafCursor() {
   });
   // Listen for messages from content script
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log('Received message:', message);
     if (message.type === 'EDIT_TEXT') {
       // Handle the message asynchronously
       handle_edit_text(message.text)
         .then(response => {
-          console.log('Sending response:', response);
           sendResponse({ text: response });
         })
         .catch(error => {
           console.error('Error processing edit request:', error);
-          sendResponse({ text: "Error processing request" });
+          sendResponse({ error: "Error processing request" });
         });
-      return true; // Keep the message channel open for the async response
     } else if (message.type === 'UPDATE_ALL_TEXT') {
       all_text = message.text;
     } else if (message.type === 'UPDATE_CODE_SNIPPET') {
-      current_code_snippet = message.text;
+      current_code_snippet = message.text
+    } else if (message.type === 'AUTOCOMPLETE') {
+      handle_autocomplete(message.text)
+        .then(response => {
+          sendResponse({ text: response });
+        })
+        .catch(error => {
+          console.error('Error processing autocomplete request:', error);
+          sendResponse({ error: "Error processing request" });
+        });
     }
-    return false;
+    return true;
   });
 
 }
@@ -82,6 +113,29 @@ function getEditPrompt(code_snippet, user_request) {
   RETURN ONLY THE LATEX CODE AS A STRING. INCLUDE \n BETWEEN LINES OF CODE. 
   `
   }
+
+function getCheckAutocompleteNeededPrompt(all_text) {
+  return `
+  You are a LaTeX expert. Based on the LaTeX codebase and highlighted area using dashes, determine if the an autocomplete is needed.
+  Return "yes" if the an autocomplete is needed, otherwise return "no".
+
+  Here is the entire LaTeX codebase:
+  ${all_text}
+
+  RETURN ONLY "yes" OR "no"
+  `
+}
+
+
+function getAutoCompletePrompt(current_line, all_text) {
+  return `
+  You are a LaTeX expert. Based on the current line of code, suggest a completion for the line highlighted by dashes.
+  The entire latex codebase:
+  ${all_text}
+
+  RETURN ONLY ONE LINE OF LATEX CODE AS A STRING.
+  `
+}
 
 // Initialize the extension
 OverleafCursor();

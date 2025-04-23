@@ -2,11 +2,29 @@
 <html>
 <head>
   <title>LaTeX Auto</title>
-  <link href="output.css" rel="stylesheet">
+  <link href="index.css" rel="stylesheet">
 </head>
-<body class="w-[1200px] p-[10px] font-sans">
-  <h2 class="text-xl font-bold">LaTeX Auto</h2>
-  <button id="convertSelection" class="w-full py-2 px-2 my-[5px] mx-0 bg-green-500 text-white border-none rounded cursor-pointer hover:bg-green-600">Convert Selected Text</button>
-  <div id="result"></div>
+<body>
+  <div class="container">
+    <h2 class="heading">LaTeX Auto</h2>
+    <form id="apiKeyForm" class="form">
+      <div>
+        <input type="password" id="apiKey" name="apiKey" class="input" placeholder="Enter your API key">
+      </div>
+      <div>
+        <label for="modelType" class="label">Model Type</label>
+        <select id="modelType" name="modelType" class="input">
+          <option value="openai">OpenAI</option>
+          <option value="gemini">Gemini</option>
+          <option value="claude">Claude</option>
+          <option value="groq">Groq</option>
+        </select>
+      </div>
+      <button type="submit" class="button">
+        Save API Key
+      </button>
+    </form>
+    <div id="result" class="result"></div>
+  </div>
 </body>
 </html> 
