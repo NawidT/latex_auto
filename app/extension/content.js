@@ -145,6 +145,15 @@ function App() {
     }
   }
 
+  function get_remaining_complete() {
+    for (let i = 0; i < current_line.innerText.length; i++) {
+      if (current_line.innerText[i] !== ac_response.text[i]) {
+        return ac_response.text.slice(i);
+      }
+    }
+    return "";
+  }
+
   async function handle_autocomplete() {
     last_autocompleted_line = null;
     has_autocomplete_been_triggered = false;
@@ -165,7 +174,8 @@ function App() {
       return null;
     }
     last_autocompleted_line = ac_response.text.trim();
-    current_line.innerText += " %%% " + last_autocompleted_line;
+    remaining_complete = get_remaining_complete();
+    current_line.innerText += " %%% " + remaining_complete;
     console.log('After:', window.getSelection().anchorOffset);
   }
 
