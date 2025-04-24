@@ -156,7 +156,7 @@ function App() {
   async function handle_autocomplete() {
     last_autocompleted_line = null;
     has_autocomplete_been_triggered = false;
-    if (current_line.innerText == "") { 
+    if (current_line == null || current_line.innerText == "") { 
       return null;
     }
     change_since_autocomplete = false;
