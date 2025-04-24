@@ -96,6 +96,14 @@ function OverleafCursor() {
     return true;
   });
 
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'UPDATE_API_KEY') {
+      const apiKey = message.text;
+      console.log('Received API key:', apiKey);
+      sendResponse({ status: 'success' });
+    }
+  });
+
 }
 // PROMPTS ----------------------------------------------------------------------
 function getEditPrompt(code_snippet, user_request) {
