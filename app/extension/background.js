@@ -51,7 +51,10 @@ function OverleafCursor() {
     }
     const validation = getCheckAutocompleteNeededPrompt(all_text);
     let validation_response = await hitOAI([{role: 'user', content: validation}]);
-    if (validation_response === "yes") {
+    validation_response = validation_response.replace('```json', '').replace('```', '');
+    validation_response = JSON.parse(validation_response);
+    console.log('Validation Response:', validation_response);
+    if (validation_response["answer"] === "yes") {
       const prompt = getAutoCompletePrompt(new_text);
       let response = await hitOAI([{role: 'user', content: prompt}]);
       response = response.replace('```latex', '').replace('```', '').trim().replace('`', '').replace('"', '');
@@ -120,6 +123,9 @@ function getCheckAutocompleteNeededPrompt(all_text) {
   Return "yes" if the an autocomplete is needed, otherwise return "no". Do not repeat code that is nearby the highlighted area.
   Be very greedy with how many times you return "yes".
 
+  Here is the entire LaTeX codebase:
+  ${all_text}
+
   Example1:
   all_text = """
   \documentclass{article}
@@ -142,11 +148,13 @@ function getCheckAutocompleteNeededPrompt(all_text) {
   """
   Returns: "no"
 
-  Here is the entire LaTeX codebase:
-  ${all_text}
-
-  RETURN ONLY "yes" OR "no". If you are unsure, return "no". 
   Only return "yes" if you are very confident that a meaningful and relevant autocomplete is needed.
+  RETURN JSON IN THE FOLLOWING FORMAT:
+
+  {{
+     "reasoning": "reasoning for your answer",
+     "answer": "yes" or "no"
+  }}
 `
 }
 
@@ -155,36 +163,12 @@ function getAutoCompletePrompt(all_text) {
   return `
   You are a LaTeX expert. Based on the entire latex codebase, suggest a completion for the line highlighted by dashes.
   Consider the entire latex codebase. Make the changes small. Make sure the change doesn't conflict with the rest of the codebase.
-  Make sure the change doesn't break the code.
-
-  Example1:
-  all_text = """
-  \documentclass{article}
-  \begin{document}
-  ------- AUTOCOMPLETE START ---------
-  Hello, wo {paste the autocomplete here}
-  ------- AUTOCOMPLETE END ---------
-  \end{document}
-  """
-  Returns: "rld!"
-
-  Example2:
-  all_text = """
-  \documentclass{article}
-  \begin{document}
-  ------- AUTOCOMPLETE START ---------
-  Hello, world! {paste the autocomplete here}
-  ------- AUTOCOMPLETE END ---------
-  \end{document}
-  """
-  Returns: ""
-
+  Make sure the change doesn't break the code. If a comment asks for a change, make sure the change is made.
 
   The entire latex codebase:
   ${all_text}
 
-  RETURN ONLY ONE LINE OF LATEX CODE AS A STRING. 
-  RETURN ONLY THE NEW PIECES OF CODE THAT NEED TO BE ADDED.
+  RETURN ONLY LATEX CODE AS A STRING. INCLUDE \n BETWEEN LINES OF CODE. DON'T INCLUDE THE HIGHLIGHTED DASHES.
   `
 }
 

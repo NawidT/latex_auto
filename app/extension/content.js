@@ -15,6 +15,7 @@ function App() {
   let all_text = "";
 
   let current_line = null; // this is the ELEMENT of the current line (cm-line)
+  let current_lines = [];
   let last_autocompleted_line = null;
 
   let change_since_autocomplete = false;
@@ -141,6 +142,9 @@ function App() {
   function remove_autocompleted_text() {
     if (current_line != null) {
       current_line.innerText = current_line.innerText.replace(/ %%% .*/, '');
+      current_lines.forEach(line => {
+        line.innerText = line.innerText.replace(/ %%% .*/, '');
+      });
     }
   }
 
@@ -172,7 +176,21 @@ function App() {
     }
     last_autocompleted_line = response.text.trim();
     let remaining_complete = get_remaining_complete(last_autocompleted_line);
-    current_line.innerText += " %%% " + remaining_complete;
+    rem_lines = remaining_complete.split('\n');
+    rem_lines.forEach(line => {
+      current_line.innerText += " %%% " + line;
+    });
+    current_line.innerText = current_line.innerText + rem_lines.join('\n');
+    if (rem_lines.length > 0) {
+      let all_lines = document.querySelectorAll('.cm-line');
+      let cur_idx = all_lines.indexOf(current_line);
+      for (let i = cur_idx + 1; i < cur_idx + 1 + rem_lines.length; i++) {
+        current_lines.push(all_lines[i]);
+      }
+      current_lines.forEach((line, idx) => {
+        line.innerText = "%%% " + rem_lines[idx];
+      });
+    };
   }
 
   function trigger_autocomplete() {
