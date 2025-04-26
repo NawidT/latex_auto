@@ -99,7 +99,6 @@ function OverleafCursor() {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'UPDATE_API_KEY') {
       api_key = message.text;
-      console.log('Received API key:', apiKey);
       sendResponse({ status: 'success' });
     }
   });
