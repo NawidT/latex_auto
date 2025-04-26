@@ -40,11 +40,34 @@ function OverleafCursor() {
     const validation = getCheckAutocompleteNeededPrompt(focused_text);
     let validation_response = await hitOAI([{role: 'user', content: validation}]);
     validation_response = validation_response.replace('```json', '').replace('```', '');
-    validation_response = JSON.parse(validation_response);
+    
+    try {
+      // Try to parse the JSON response
+      validation_response = JSON.parse(validation_response);
+    } catch (error) {
+      console.error('Error parsing JSON response:', error);
+      // If parsing fails, try to extract the answer using regex
+      const answerMatch = validation_response.match(/"answer"\s*:\s*"([^"]+)"/);
+      const reasoningMatch = validation_response.match(/"reasoning"\s*:\s*"([^"]+)"/);
+      
+      if (answerMatch && reasoningMatch) {
+        validation_response = {
+          answer: answerMatch[1],
+          reasoning: reasoningMatch[1]
+        };
+      } else {
+        // If we can't extract the answer, default to "no"
+        validation_response = {
+          answer: "no",
+          reasoning: "Failed to parse response"
+        };
+      }
+    }
+    
     console.log('Validation Response:', validation_response);
     
     if (validation_response["answer"] === "yes") {
-      const prompt = getAutoCompletePrompt(all_text, around_text);
+      const prompt = getAutoCompletePrompt(all_text, around_text, validation_response["reasoning"]);
       let response = await hitOAI([{role: 'user', content: prompt}]);
       response = response.replace('```latex', '').replace('```', '').trim().replace('`', '').replace('"', '');
       return response;
@@ -75,7 +98,7 @@ function OverleafCursor() {
     } else if (message.type === 'AUTOCOMPLETE') {
       handle_autocomplete(message.focused_text, message.around_text, message.all_text)
         .then(response => {
-          sendResponse({ text: response, completed_line: message.text });
+          sendResponse({text: response});
         })
         .catch(error => {
           console.error('Error processing autocomplete request:', error);
@@ -103,38 +126,16 @@ function getEditPrompt(code_snippet, user_request) {
   `
   }
 
-function getCheckAutocompleteNeededPrompt(all_text) {
+function getCheckAutocompleteNeededPrompt(focused_text) {
   return `
   You are a LaTeX expert. Based on the LaTeX codebase and highlighted area using dashes, determine if the an autocomplete is needed.
   Return "yes" if the an autocomplete is needed, otherwise return "no". Do not repeat code that is nearby the highlighted area.
-  Be very greedy with how many times you return "yes".
+  Be very greedy with how many times you return "yes". 
 
-  Here is the entire LaTeX codebase:
-  ${all_text}
+  Here is the highlighted area:
+  ${focused_text}
 
-  Example1:
-  all_text = """
-  \documentclass{article}
-  \begin{document}
-  ------- AUTOCOMPLETE START ---------
-  Hello, wo {paste the autocomplete here}
-  ------- AUTOCOMPLETE END ---------
-  \end{document}
-  """
-  Returns: "yes"
-
-  Example2:
-  all_text = """
-  \documentclass{article}
-  \begin{document}
-  ------- AUTOCOMPLETE START ---------
-  Hello, world! {paste the autocomplete here}
-  ------- AUTOCOMPLETE END ---------
-  \end{document}
-  """
-  Returns: "no"
-
-  Only return "yes" if you are very confident that a meaningful and relevant autocomplete is needed.
+  Only return "yes" if you are very confident that a meaningful and relevant autocomplete is needed. Say no more often than yes.
   RETURN JSON IN THE FOLLOWING FORMAT:
 
   {{
@@ -145,10 +146,12 @@ function getCheckAutocompleteNeededPrompt(all_text) {
 }
 
 
-function getAutoCompletePrompt(all_text,plusminus_text) {
+function getAutoCompletePrompt(all_text, plusminus_text, goal) {
   return `
   The code provided below is a snippet of a larger LaTeX codebase. Assume not all the code is provided.
   Complete the latex code in only the lines provided. Do not create new lines of code.
+  Here is the goal of the completion:
+  ${goal}
 
   Here is the LaTeX codebase:
   ${all_text}
