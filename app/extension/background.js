@@ -1,28 +1,29 @@
-async function hitOAI(messages) {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: messages,
-      max_tokens: 1000
-    })
-  });
-  const data = await response.json();
-  
-  console.log('OpenAI Response:', data.choices[0].message.content);
-  return data.choices[0].message.content;
-}
-
 function OverleafCursor() {
   // STATE VARIABLES ------------------------------------------------------------
   let msg_chain = []; // contains messages as a dict with keys 'role' and 'content'
   let all_text = "";
   let current_code_snippet = "";
+  let api_key = "";
+  let model_type = "gpt-4o-mini"; 
 
+  async function hitOAI(messages) {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${api_key}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: messages,
+        max_tokens: 1000
+      })
+    });
+    const data = await response.json();
+    
+    console.log('OpenAI Response:', data.choices[0].message.content);
+    return data.choices[0].message.content;
+  }
 
   // HANDLING FUNCTIONS ----------------------------------------------------------
   async function handle_edit_text(user_request) {
@@ -94,6 +95,18 @@ function OverleafCursor() {
         });
     }
     return true;
+  });
+
+  // Listen for messages from popup
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'UPDATE_API_KEY') {
+      api_key = message.text;
+      sendResponse({ status: 'success' });
+    } else if (message.type === 'UPDATE_MODEL_TYPE') {
+      // Handle model type update if needed
+      model_type = message.text;
+      sendResponse({ status: 'success' });
+    }
   });
 
 }
