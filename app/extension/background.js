@@ -4,25 +4,54 @@ function OverleafCursor() {
   let all_text = "";
   let current_code_snippet = "";
   let api_key = "";
-  let model_type = "gpt-4o-mini"; 
+  let model_type = ""; 
 
+  // maybe rename to hitAI for clairity
+  // API CALLS ------------------------------------------------------------------
   async function hitOAI(messages) {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${api_key}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: messages,
-        max_tokens: 1000
-      })
-    });
-    const data = await response.json();
-    
-    console.log('OpenAI Response:', data.choices[0].message.content);
-    return data.choices[0].message.content;
+    if (model_type === "openai") {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${api_key}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: messages,
+          max_tokens: 1000
+        })
+      });
+      const data = await response.json();
+      
+      console.log('OpenAI Response:', data.choices[0].message.content);
+      return data.choices[0].message.content;
+      
+    } else if (model_type === "gemini") {
+      console.log("Gemini model type selected");
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${api_key}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: messages.map(m => ({
+            role: m.role === 'assistant' ? 'model' : m.role,
+            parts: [{ text: m.content }]
+          }))
+        }),
+      });
+
+      const data = await response.json();
+      console.log("Full Gemini API response:", JSON.stringify(data, null, 2));
+
+      if (!data.candidates || !data.candidates[0]?.content?.parts?.[0]?.text) {
+        throw new Error("Invalid Gemini API response");
+      }
+
+      console.log('Gemini Response:', data.candidates[0].content.parts[0].text);
+      return data.candidates[0].content.parts[0].text;
+    }
   }
 
   // HANDLING FUNCTIONS ----------------------------------------------------------
