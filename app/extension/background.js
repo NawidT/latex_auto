@@ -20,7 +20,6 @@ async function hitOAI(messages) {
 function OverleafCursor() {
   // STATE VARIABLES ------------------------------------------------------------
   let msg_chain = []; // contains messages as a dict with keys 'role' and 'content'
-  let all_text = "";
   let current_code_snippet = "";
 
 
@@ -35,27 +34,17 @@ function OverleafCursor() {
     return response;
   }
 
-  async function handle_autocomplete(current_line) {
-    const lines = all_text.split('\n');
-    let new_text = "";
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i] === current_line) {
-        new_text += "----------------- AUTOCOMPLETE START ---------------------\n";
-        new_text += lines[i] + "{paste the autocomplete here}" + "\n";
-        new_text += "----------------- AUTOCOMPLETE END ---------------------\n";
-      } else if (lines[i].trim() === "") {
-        new_text += "";
-      } else {
-        new_text += lines[i] + "\n";
-      }
-    }
-    const validation = getCheckAutocompleteNeededPrompt(all_text);
+  async function handle_autocomplete(focused_text, around_text, all_text) {
+    if (all_text == "") return "";
+
+    const validation = getCheckAutocompleteNeededPrompt(focused_text);
     let validation_response = await hitOAI([{role: 'user', content: validation}]);
     validation_response = validation_response.replace('```json', '').replace('```', '');
     validation_response = JSON.parse(validation_response);
     console.log('Validation Response:', validation_response);
+    
     if (validation_response["answer"] === "yes") {
-      const prompt = getAutoCompletePrompt(new_text);
+      const prompt = getAutoCompletePrompt(all_text, around_text);
       let response = await hitOAI([{role: 'user', content: prompt}]);
       response = response.replace('```latex', '').replace('```', '').trim().replace('`', '').replace('"', '');
       return response;
@@ -65,7 +54,6 @@ function OverleafCursor() {
   }
 
   // CHROME LISTENERS ------------------------------------------------------------
-  
   // Listen for extension installation
   chrome.runtime.onInstalled.addListener(() => {
     console.log('LaTeX Auto Extension Installed');
@@ -82,12 +70,10 @@ function OverleafCursor() {
           console.error('Error processing edit request:', error);
           sendResponse({ error: "Error processing request" });
         });
-    } else if (message.type === 'UPDATE_ALL_TEXT') {
-      all_text = message.text;
     } else if (message.type === 'UPDATE_CODE_SNIPPET') {
       current_code_snippet = message.text
     } else if (message.type === 'AUTOCOMPLETE') {
-      handle_autocomplete(message.text)
+      handle_autocomplete(message.focused_text, message.around_text, message.all_text)
         .then(response => {
           sendResponse({ text: response, completed_line: message.text });
         })
@@ -159,16 +145,18 @@ function getCheckAutocompleteNeededPrompt(all_text) {
 }
 
 
-function getAutoCompletePrompt(all_text) {
+function getAutoCompletePrompt(all_text,plusminus_text) {
   return `
-  You are a LaTeX expert. Based on the entire latex codebase, suggest a completion for the line highlighted by dashes.
-  Consider the entire latex codebase. Make the changes small. Make sure the change doesn't conflict with the rest of the codebase.
-  Make sure the change doesn't break the code. If a comment asks for a change, make sure the change is made.
+  The code provided below is a snippet of a larger LaTeX codebase. Assume not all the code is provided.
+  Complete the latex code in only the lines provided. Do not create new lines of code.
 
-  The entire latex codebase:
+  Here is the LaTeX codebase:
   ${all_text}
 
-  RETURN ONLY LATEX CODE AS A STRING. INCLUDE \n BETWEEN LINES OF CODE. DON'T INCLUDE THE HIGHLIGHTED DASHES.
+  Complete the following latex code:
+  ${plusminus_text}
+
+  RETURN ONLY THE LATEX CODE PROVIDED WITH THE COMPLETION CODE.
   `
 }
 

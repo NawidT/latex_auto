@@ -12,10 +12,9 @@ function App() {
   let current_user_input = '';
   let selectionRange = null;
   let selectedLines = [];
-  let all_text = "";
 
   let current_line = null; // this is the ELEMENT of the current line (cm-line)
-  let current_lines = [];
+  let num_comments = 0;
   let last_autocompleted_line = null;
 
   let change_since_autocomplete = false;
@@ -120,8 +119,7 @@ function App() {
     new_code = new_code.trim();
     new_code_lines = new_code.split('\n');
     console.log('New code lines:', new_code_lines);
-    diff = new_code_lines.length - selectedLines.length;
-    
+    console.log('Selected lines:', selectedLines);
     selectedLines.forEach((line, index) => {
       if (index < selectedLines.length - 1) {
         if (index < new_code_lines.length) { 
@@ -139,12 +137,28 @@ function App() {
     });
   }
 
+  function get_comment_lines() {
+    let codebase = Array.from(document.querySelectorAll('.cm-line'));
+    let cur_line_idx = codebase.indexOf(current_line);
+    let comments = codebase.slice(cur_line_idx + 1, cur_line_idx + 1 + num_comments);
+    return comments;
+  }
+
   function remove_autocompleted_text() {
     if (current_line != null) {
-      current_line.innerText = current_line.innerText.replace(/ %%% .*/, '');
-      current_lines.forEach(line => {
-        line.innerText = line.innerText.replace(/ %%% .*/, '');
-      });
+      if (num_comments == 0) {
+        current_line.innerText = current_line.innerText.replace('%%%', '');
+      } else {
+        // recalc the codebase and find comment_lines
+        let comments = get_comment_lines();
+        console.log('Comment Lines:', comments);
+        // remove the comments from the codebase
+        comments.forEach(line => {
+          line.remove();
+        });
+      }
+      num_comments = 0;
+      current_line = null;
     }
   }
 
@@ -163,8 +177,35 @@ function App() {
     if (current_line == null || current_line.innerText == "") { 
       return null;
     }
+
+    let codebase = Array.from(document.querySelectorAll('.cm-line'));
+    let cur_line_idx = codebase.indexOf(current_line);
+    // find the +- 5 lines around the current line
+    let start_idx = Math.max(0, cur_line_idx - 5);
+    let end_idx = Math.min(codebase.length - 1, cur_line_idx + 5);
+    let around_text = "";
+    let focused_text = "";
+    let all_text = "";
+    codebase.forEach((line, idx) => {
+      if (idx >= start_idx && idx <= end_idx) {
+        around_text += line.innerText + "\n";
+      }
+      if (line == current_line) {
+        focused_text += "----------------- FOCUS START ---------------------\n";
+        focused_text += line.innerText + "\n";
+        focused_text += "----------------- FOCUS END ---------------------\n";
+      } else {
+        focused_text += line.innerText + "\n";
+      }
+      all_text += line.innerText + "\n";
+    });
     change_since_autocomplete = false;
-    const response = await chrome.runtime.sendMessage({ type: 'AUTOCOMPLETE', text: current_line.innerText});
+    const response = await chrome.runtime.sendMessage({ 
+      type: 'AUTOCOMPLETE', 
+      around_text: around_text,
+      all_text: all_text,
+      focused_text: focused_text
+    });
     if (response.text === '' 
       || current_line == null // check if current line is null case when user triggered autocomplete before background responded
       || change_since_autocomplete // handles case where user moved to another line before background responded
@@ -174,37 +215,41 @@ function App() {
     ) {
       return null;
     }
-    last_autocompleted_line = response.text.trim();
-    let remaining_complete = get_remaining_complete(last_autocompleted_line);
-    rem_lines = remaining_complete.split('\n');
-    rem_lines.forEach(line => {
-      current_line.innerText += " %%% " + line;
-    });
-    current_line.innerText = current_line.innerText + rem_lines.join('\n');
-    if (rem_lines.length > 0) {
-      let all_lines = document.querySelectorAll('.cm-line');
-      let cur_idx = all_lines.indexOf(current_line);
-      for (let i = cur_idx + 1; i < cur_idx + 1 + rem_lines.length; i++) {
-        current_lines.push(all_lines[i]);
-      }
-      current_lines.forEach((line, idx) => {
-        line.innerText = "%%% " + rem_lines[idx];
-      });
-    };
+    background_response = response.text.trim();
+    if (background_response.split('\n').length == 1) {
+      console.log('Single line response:', background_response);
+      let remaining_complete = get_remaining_complete(background_response);
+      current_line.innerText += " %%% " + remaining_complete;
+    } else {
+      console.log('Multi line response:', background_response);
+      // push all lines to bottom of current line with %%% and \n between them 
+      let comments = " %%%" + background_response.split('\n').join('\n%%% ');
+      current_line.innerText += comments;
+      num_comments = background_response.split('\n').length;
+    }
+    change_since_autocomplete = true;
   }
 
   function trigger_autocomplete() {
-    if (current_line?.innerText.includes(" %%% ")) {
-      if (last_autocompleted_line.includes(current_line.innerText)) {
-        current_line.innerText = last_autocompleted_line;
-      } else {
-        current_line.innerText = current_line.innerText.replace(/ %%% .*/, '') + last_autocompleted_line;
+    if (num_comments == 0) {
+      if (current_line?.innerText.includes(" %%% ")) {
+        if (last_autocompleted_line.includes(current_line.innerText)) {
+          current_line.innerText = last_autocompleted_line;
+        } else {
+          current_line.innerText = current_line.innerText.replace('%%%', '') + last_autocompleted_line;
+        }
       }
-      last_autocompleted_line = null;
-      current_line = null;
-      has_autocomplete_been_triggered = true;
-      change_since_autocomplete = true;
+    } else {
+      let comments = get_comment_lines();
+      comments.forEach(line => {
+        line.innerText = line.innerText.replace('%%%', '');
+      });
+      num_comments = 0;
     }
+    current_line = null;
+    has_autocomplete_been_triggered = true;
+    change_since_autocomplete = true;
+    last_autocompleted_line = null;
   }
 
   function trigger_edit(selection, selectedText) {
@@ -299,17 +344,11 @@ function App() {
     // autocomplete when right arrow key is pressed
     } else if (e.key === 'ArrowRight') {
       // Only trigger autocomplete if current_line exists and contains an autocomplete suggestion
-      if (current_line && current_line.innerText.includes(" %%% ")) {
+      if (current_line && num_comments > 0) {
         trigger_autocomplete();
       }
     }
   });
-
-  // every 10 seconds, update all_text
-  setInterval(async() => {
-    all_text = document.getElementsByClassName("cm-content cm-lineWrapping")[0]?.innerText;
-    chrome.runtime.sendMessage({ type: 'UPDATE_ALL_TEXT', text: all_text });
-  }, 10000);
 }
 
 App();
