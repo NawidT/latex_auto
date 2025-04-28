@@ -1,7 +1,6 @@
 function OverleafCursor() {
   // STATE VARIABLES ------------------------------------------------------------
   let msg_chain = []; // contains messages as a dict with keys 'role' and 'content'
-  let all_text = "";
   let current_code_snippet = "";
   let api_key = "";
   let model_type = "gpt-4o-mini"; 
@@ -36,24 +35,40 @@ function OverleafCursor() {
     return response;
   }
 
-  async function handle_autocomplete(current_line) {
-    const lines = all_text.split('\n');
-    let new_text = "";
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i] === current_line) {
-        new_text += "----------------- AUTOCOMPLETE START ---------------------\n";
-        new_text += lines[i] + "{paste the autocomplete here}" + "\n";
-        new_text += "----------------- AUTOCOMPLETE END ---------------------\n";
-      } else if (lines[i].trim() === "") {
-        new_text += "";
+  async function handle_autocomplete(focused_text, around_text, all_text) {
+    if (all_text == "") return "";
+
+    const validation = getCheckAutocompleteNeededPrompt(focused_text);
+    let validation_response = await hitOAI([{role: 'user', content: validation}]);
+    validation_response = validation_response.replace('```json', '').replace('```', '');
+    
+    try {
+      // Try to parse the JSON response
+      validation_response = JSON.parse(validation_response);
+    } catch (error) {
+      console.error('Error parsing JSON response:', error);
+      // If parsing fails, try to extract the answer using regex
+      const answerMatch = validation_response.match(/"answer"\s*:\s*"([^"]+)"/);
+      const reasoningMatch = validation_response.match(/"reasoning"\s*:\s*"([^"]+)"/);
+      
+      if (answerMatch && reasoningMatch) {
+        validation_response = {
+          answer: answerMatch[1],
+          reasoning: reasoningMatch[1]
+        };
       } else {
-        new_text += lines[i] + "\n";
+        // If we can't extract the answer, default to "no"
+        validation_response = {
+          answer: "no",
+          reasoning: "Failed to parse response"
+        };
       }
     }
-    const validation = getCheckAutocompleteNeededPrompt(all_text);
-    let validation_response = await hitOAI([{role: 'user', content: validation}]);
-    if (validation_response === "yes") {
-      const prompt = getAutoCompletePrompt(new_text);
+    
+    console.log('Validation Response:', validation_response);
+    
+    if (validation_response["answer"] === "yes") {
+      const prompt = getAutoCompletePrompt(all_text, around_text, validation_response["reasoning"]);
       let response = await hitOAI([{role: 'user', content: prompt}]);
       response = response.replace('```latex', '').replace('```', '').trim().replace('`', '').replace('"', '');
       return response;
@@ -63,7 +78,6 @@ function OverleafCursor() {
   }
 
   // CHROME LISTENERS ------------------------------------------------------------
-  
   // Listen for extension installation
   chrome.runtime.onInstalled.addListener(() => {
     console.log('LaTeX Auto Extension Installed');
@@ -80,14 +94,12 @@ function OverleafCursor() {
           console.error('Error processing edit request:', error);
           sendResponse({ error: "Error processing request" });
         });
-    } else if (message.type === 'UPDATE_ALL_TEXT') {
-      all_text = message.text;
     } else if (message.type === 'UPDATE_CODE_SNIPPET') {
       current_code_snippet = message.text
     } else if (message.type === 'AUTOCOMPLETE') {
-      handle_autocomplete(message.text)
+      handle_autocomplete(message.focused_text, message.around_text, message.all_text)
         .then(response => {
-          sendResponse({ text: response, completed_line: message.text });
+          sendResponse({text: response});
         })
         .catch(error => {
           console.error('Error processing autocomplete request:', error);
@@ -127,77 +139,40 @@ function getEditPrompt(code_snippet, user_request) {
   `
   }
 
-function getCheckAutocompleteNeededPrompt(all_text) {
+function getCheckAutocompleteNeededPrompt(focused_text) {
   return `
   You are a LaTeX expert. Based on the LaTeX codebase and highlighted area using dashes, determine if the an autocomplete is needed.
   Return "yes" if the an autocomplete is needed, otherwise return "no". Do not repeat code that is nearby the highlighted area.
-  Be very greedy with how many times you return "yes".
+  Be very greedy with how many times you return "yes". 
 
-  Example1:
-  all_text = """
-  \documentclass{article}
-  \begin{document}
-  ------- AUTOCOMPLETE START ---------
-  Hello, wo {paste the autocomplete here}
-  ------- AUTOCOMPLETE END ---------
-  \end{document}
-  """
-  Returns: "yes"
+  Here is the highlighted area:
+  ${focused_text}
 
-  Example2:
-  all_text = """
-  \documentclass{article}
-  \begin{document}
-  ------- AUTOCOMPLETE START ---------
-  Hello, world! {paste the autocomplete here}
-  ------- AUTOCOMPLETE END ---------
-  \end{document}
-  """
-  Returns: "no"
+  Only return "yes" if you are very confident that a meaningful and relevant autocomplete is needed. Say no more often than yes.
+  RETURN JSON IN THE FOLLOWING FORMAT:
 
-  Here is the entire LaTeX codebase:
-  ${all_text}
-
-  RETURN ONLY "yes" OR "no". If you are unsure, return "no". 
-  Only return "yes" if you are very confident that a meaningful and relevant autocomplete is needed.
+  {{
+     "reasoning": "reasoning for your answer",
+     "answer": "yes" or "no"
+  }}
 `
 }
 
 
-function getAutoCompletePrompt(all_text) {
+function getAutoCompletePrompt(all_text, plusminus_text, goal) {
   return `
-  You are a LaTeX expert. Based on the entire latex codebase, suggest a completion for the line highlighted by dashes.
-  Consider the entire latex codebase. Make the changes small. Make sure the change doesn't conflict with the rest of the codebase.
-  Make sure the change doesn't break the code.
+  The code provided below is a snippet of a larger LaTeX codebase. Assume not all the code is provided.
+  Complete the latex code in only the lines provided. Do not create new lines of code.
+  Here is the goal of the completion:
+  ${goal}
 
-  Example1:
-  all_text = """
-  \documentclass{article}
-  \begin{document}
-  ------- AUTOCOMPLETE START ---------
-  Hello, wo {paste the autocomplete here}
-  ------- AUTOCOMPLETE END ---------
-  \end{document}
-  """
-  Returns: "rld!"
-
-  Example2:
-  all_text = """
-  \documentclass{article}
-  \begin{document}
-  ------- AUTOCOMPLETE START ---------
-  Hello, world! {paste the autocomplete here}
-  ------- AUTOCOMPLETE END ---------
-  \end{document}
-  """
-  Returns: ""
-
-
-  The entire latex codebase:
+  Here is the LaTeX codebase:
   ${all_text}
 
-  RETURN ONLY ONE LINE OF LATEX CODE AS A STRING. 
-  RETURN ONLY THE NEW PIECES OF CODE THAT NEED TO BE ADDED.
+  Complete the following latex code:
+  ${plusminus_text}
+
+  RETURN ONLY THE LATEX CODE PROVIDED WITH THE COMPLETION CODE.
   `
 }
 
