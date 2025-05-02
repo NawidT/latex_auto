@@ -26,7 +26,7 @@ function OverleafCursor() {
       console.log('OpenAI Response:', data.choices[0].message.content);
       return data.choices[0].message.content;
       
-    } else if (model_type === "gemini") {
+    } else if (model_type === "gemini") {   // Gemini API with v1 beta api 
       console.log("Gemini model type selected");
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${api_key}`, {
         method: 'POST',
@@ -50,6 +50,30 @@ function OverleafCursor() {
 
       console.log('Gemini Response:', data.candidates[0].content.parts[0].text);
       return data.candidates[0].content.parts[0].text;
+
+    } else if (model_type === "claude") {
+      
+      console.log("Claude model type selected");
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${api_key}`,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: "claude-3-haiku-20240307",
+          max_tokens: 1000,
+          messages: messages.map(m => ({
+            role: m.role,
+            content: m.content
+          }))
+        })
+      });
+
+      const data = await response.json();
+      console.log("Claude Response:", data.content[0].text);
+      return data.content[0].text;
     }
   }
 
