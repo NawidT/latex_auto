@@ -12,12 +12,12 @@ function App() {
   let current_user_input = '';
   let selectionRange = null;
   let selectedLines = [];
-  let all_text = "";
 
   let current_line = null; // this is the ELEMENT of the current line (cm-line)
+  let num_comments = 0;
   let last_autocompleted_line = null;
 
-  let change_since_autocomplete = false;
+  let change_since_autocomplete = true;
   let has_autocomplete_been_triggered = false;
 
   // ELEMENTS --------------------------------------------------------------------
@@ -47,6 +47,75 @@ function App() {
 
   const latex_input = chat_selected.getElementsByClassName("latex-input")[0];
   const latex_close = chat_selected.getElementsByClassName("latex-close")[0];
+
+  // DIFF CHECKER ALGORITHMS -------------------------------------------------------
+
+  /**
+   * Compute LCS matrix for a and b
+   */
+  function buildLCS(a, b) {
+    const m = a.length, n = b.length;
+    const dp = Array(m+1).fill().map(() => Array(n+1).fill(0));
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        dp[i][j] = a[i-1] === b[j-1]
+          ? dp[i-1][j-1] + 1
+          : Math.max(dp[i-1][j], dp[i][j-1]);
+      }
+    }
+    return dp;
+  }
+
+  /**
+   * Walk back through the LCS matrix to build raw diff ops
+   */
+  function diffRaw(a, b, dp) {
+    const ops = [];
+    let i = a.length, j = b.length;
+    while (i && j) {
+      if (a[i-1] === b[j-1]) {
+        ops.unshift({ type: 'equal',  char: a[i-1] });
+        i--; j--;
+      } else if (dp[i-1][j] >= dp[i][j-1]) {
+        ops.unshift({ type: 'delete', char: a[i-1] });
+        i--;
+      } else {
+        ops.unshift({ type: 'insert', char: b[j-1] });
+        j--;
+      }
+    }
+    while (i--) ops.unshift({ type: 'delete', char: a[i] });
+    while (j--) ops.unshift({ type: 'insert', char: b[j] });
+    return ops;
+  }
+
+  /**
+   * Merge consecutive operations of the same type into segments
+   */
+  function mergeOps(ops) {
+    if (!ops.length) return [];
+    const segs = [];
+    let { type, char: text } = ops[0];
+    for (let k = 1; k < ops.length; k++) {
+      if (ops[k].type === type) {
+        text += ops[k].char;
+      } else {
+        segs.push({ type, text });
+        ({ type, char: text } = ops[k]);
+      }
+    }
+    segs.push({ type, text });
+    return segs;
+  }
+
+  /**
+   * Main diff function
+   */
+  function autocomplete_diff(before, after) {
+    const dp  = buildLCS(before, after);
+    const ops = diffRaw(before, after, dp);
+    return mergeOps(ops);
+  }
 
   // FUNCTIONS -------------------------------------------------------------------
 
@@ -119,8 +188,7 @@ function App() {
     new_code = new_code.trim();
     new_code_lines = new_code.split('\n');
     console.log('New code lines:', new_code_lines);
-    diff = new_code_lines.length - selectedLines.length;
-    
+    console.log('Selected lines:', selectedLines);
     selectedLines.forEach((line, index) => {
       if (index < selectedLines.length - 1) {
         if (index < new_code_lines.length) { 
@@ -138,55 +206,150 @@ function App() {
     });
   }
 
+  function get_comment_lines() {
+    let codebase = Array.from(document.querySelectorAll('.cm-line'));
+    let cur_line_idx = codebase.indexOf(current_line);
+    let comments = codebase.slice(cur_line_idx + 1, cur_line_idx + 1 + num_comments);
+    return comments;
+  }
+
   function remove_autocompleted_text() {
     if (current_line != null) {
-      current_line.innerText = current_line.innerText.replace(/ %%% .*/, '');
+      if (num_comments == 0) {
+        current_line.innerText = current_line.innerText.replace('%%%', '');
+      } else {
+        // recalc the codebase and find comment_lines
+        let comments = get_comment_lines();
+        console.log('Comment Lines:', comments);
+        // remove the comments from the codebase
+        comments.forEach(line => {
+          line.remove();
+        });
+      }
+      num_comments = 0;
+      current_line = null;
     }
   }
 
-  function get_remaining_complete(last_autocompleted_line) {
-    for (let i = 0; i < current_line.innerText.length; i++) {
-      if (current_line.innerText[i] !== last_autocompleted_line[i]) {
-        return last_autocompleted_line.slice(i);
+  function get_remaining_complete(focused_text, ai_complete) {
+    // remove top and bottom lines of focused_text
+    let focused_lines = focused_text.trim().split('\n');
+    focused_lines.pop();
+    focused_lines.shift();
+    let ai_lines = ai_complete.trim().split('\n');
+    let trimmed_focus_text = "";
+    focused_lines.forEach((line) => {
+      trimmed_focus_text += line.trim() + '\n'
+    })
+    let trimmed_ai_lines = [];
+    ai_lines.forEach((line) => {
+      trimmed_ai_lines.push(line.trim())
+    })
+    let n = trimmed_ai_lines.length;
+
+
+    // find the top and bottom lines of ai_lines that are not in focused_lines
+    let start_idx = 0;
+    while (start_idx < n) {
+      if (trimmed_focus_text.includes(trimmed_ai_lines.slice(0, start_idx + 1).join('\n'))) {
+        start_idx++;
+      } else {
+        break;
       }
     }
-    return "";
+    let end_idx = n - 1;
+    while (end_idx >= 0) {
+      if (trimmed_focus_text.includes(trimmed_ai_lines.slice(end_idx, n).join('\n'))) {
+        end_idx--;
+      } else {
+        break;
+      }
+    }
+    ai_complete = ai_lines.slice(start_idx, end_idx + 1).join('\n');
+    console.log('AI complete:', ai_complete);
+    let diff = autocomplete_diff(focused_text, ai_complete);
+    console.log('Diff:', diff);
+    return ai_complete;
   }
 
   async function handle_autocomplete() {
     last_autocompleted_line = null;
     has_autocomplete_been_triggered = false;
-    if (current_line.innerText == "") { 
+    if (!change_since_autocomplete || current_line == null || current_line.innerText.includes(" %%% ") ) { 
       return null;
     }
+
+    let codebase = Array.from(document.querySelectorAll('.cm-line'));
+    let cur_line_idx = codebase.indexOf(current_line);
+    // find the +- 5 lines around the current line
+    let start_idx = Math.max(0, cur_line_idx - 5);
+    let end_idx = Math.min(codebase.length - 1, cur_line_idx + 5);
+    let around_text = "";
+    let focused_text = "";
+    let all_text = "";
+    codebase.forEach((line, idx) => {
+      if (idx >= start_idx && idx <= end_idx) {
+        if (idx == start_idx) {
+          focused_text += "----------------- FOCUS START ---------------------\n";
+        } else if (idx == end_idx) {
+          focused_text += "----------------- FOCUS END ---------------------\n";
+        } 
+        focused_text += line.innerText + "\n";
+        around_text += line.innerText + "\n";
+      }
+      all_text += line.innerText + "\n";
+    });
     change_since_autocomplete = false;
-    const response = await chrome.runtime.sendMessage({ type: 'AUTOCOMPLETE', text: current_line.innerText});
+    const response = await chrome.runtime.sendMessage({ 
+      type: 'AUTOCOMPLETE', 
+      around_text: around_text,
+      all_text: all_text,
+      focused_text: focused_text
+    });
     if (response.text === '' 
       || current_line == null // check if current line is null case when user triggered autocomplete before background responded
       || change_since_autocomplete // handles case where user moved to another line before background responded
-      || response.completed_line != current_line.innerText // handles case where user moved to another line before background responded or changed current line text
       || current_line.innerText === response.text.trim() // handles case where autocomplete is not needed
-      || current_line.innerText.includes(" %%% ") // handles case where autocomplete is already applied
     ) {
       return null;
     }
-    last_autocompleted_line = response.text.trim();
-    let remaining_complete = get_remaining_complete(last_autocompleted_line);
-    current_line.innerText += " %%% " + remaining_complete;
+    background_response = response.text.trim();
+    if (background_response.split('\n').length == 1) {
+      console.log('Single line response:', background_response);
+      let remaining_complete = get_remaining_complete(focused_text, background_response);
+      current_line.innerText += " %%% " + remaining_complete;
+    } else {
+      console.log('Multi line response:', background_response);
+      // push all lines to bottom of current line with %%% and \n between them 
+      let remaining_complete = get_remaining_complete(focused_text, background_response);
+      console.log('Remaining complete:', remaining_complete);
+      let comments = " %%%" + remaining_complete.split('\n').join('\n%%% ');
+      current_line.innerText += comments;
+      num_comments = remaining_complete.split('\n').length;
+    }
+    change_since_autocomplete = true;
   }
 
   function trigger_autocomplete() {
-    if (current_line?.innerText.includes(" %%% ")) {
-      if (last_autocompleted_line.includes(current_line.innerText)) {
-        current_line.innerText = last_autocompleted_line;
-      } else {
-        current_line.innerText = current_line.innerText.replace(/ %%% .*/, '') + last_autocompleted_line;
+    if (num_comments == 0) {
+      if (current_line?.innerText.includes(" %%% ")) {
+        if (last_autocompleted_line.includes(current_line.innerText)) {
+          current_line.innerText = last_autocompleted_line;
+        } else {
+          current_line.innerText = current_line.innerText.replace('%%%', '') + last_autocompleted_line;
+        }
       }
-      last_autocompleted_line = null;
-      current_line = null;
-      has_autocomplete_been_triggered = true;
-      change_since_autocomplete = true;
+    } else {
+      let comments = get_comment_lines();
+      comments.forEach(line => {
+        line.innerText = line.innerText.replace('%%%', '');
+      });
+      num_comments = 0;
     }
+    current_line = null;
+    has_autocomplete_been_triggered = true;
+    change_since_autocomplete = true;
+    last_autocompleted_line = null;
   }
 
   function trigger_edit(selection, selectedText) {
@@ -247,10 +410,10 @@ function App() {
   });
 
   document.addEventListener('mouseup', async (e) => {
+    remove_autocompleted_text();
     if (edit_button.style.display === 'block' && !edit_button.contains(e.target)) {
       edit_button.style.display = 'none';
     } else {
-      remove_autocompleted_text();
       current_line = e.target.closest('.cm-line');
       
       // Add a small delay to ensure text selection is complete
@@ -281,17 +444,15 @@ function App() {
     // autocomplete when right arrow key is pressed
     } else if (e.key === 'ArrowRight') {
       // Only trigger autocomplete if current_line exists and contains an autocomplete suggestion
-      if (current_line && current_line.innerText.includes(" %%% ")) {
+      if (current_line && num_comments > 0) {
         trigger_autocomplete();
       }
+    } else {
+      remove_autocompleted_text();
     }
   });
-
-  // every 10 seconds, update all_text
-  setInterval(async() => {
-    all_text = document.getElementsByClassName("cm-content cm-lineWrapping")[0]?.innerText;
-    chrome.runtime.sendMessage({ type: 'UPDATE_ALL_TEXT', text: all_text });
-  }, 10000);
 }
+
+
 
 App();
