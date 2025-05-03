@@ -3,7 +3,7 @@ function OverleafCursor() {
   let msg_chain = []; // contains messages as a dict with keys 'role' and 'content'
   let current_code_snippet = "";
   let api_key = "";
-  let model_type = ""; 
+  let model_type = "";
 
   // maybe rename to hitAI for clairity
   // API CALLS ------------------------------------------------------------------
@@ -22,10 +22,10 @@ function OverleafCursor() {
         })
       });
       const data = await response.json();
-      
+
       console.log('OpenAI Response:', data.choices[0].message.content);
       return data.choices[0].message.content;
-      
+
     } else if (model_type === "gemini") {   // Gemini API with v1 beta api 
       console.log("Gemini model type selected");
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${api_key}`, {
@@ -52,14 +52,15 @@ function OverleafCursor() {
       return data.candidates[0].content.parts[0].text;
 
     } else if (model_type === "claude") {
-      
+
       console.log("Claude model type selected");
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${api_key}`,
-          'anthropic-version': '2023-06-01'
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+          "anthropic-dangerous-direct-browser-access": "true",
         },
         body: JSON.stringify({
           model: "claude-3-haiku-20240307",
@@ -92,9 +93,9 @@ function OverleafCursor() {
     if (all_text == "") return "";
 
     const validation = getCheckAutocompleteNeededPrompt(focused_text);
-    let validation_response = await hitOAI([{role: 'user', content: validation}]);
+    let validation_response = await hitOAI([{ role: 'user', content: validation }]);
     validation_response = validation_response.replace('```json', '').replace('```', '');
-    
+
     try {
       // Try to parse the JSON response
       validation_response = JSON.parse(validation_response);
@@ -103,7 +104,7 @@ function OverleafCursor() {
       // If parsing fails, try to extract the answer using regex
       const answerMatch = validation_response.match(/"answer"\s*:\s*"([^"]+)"/);
       const reasoningMatch = validation_response.match(/"reasoning"\s*:\s*"([^"]+)"/);
-      
+
       if (answerMatch && reasoningMatch) {
         validation_response = {
           answer: answerMatch[1],
@@ -117,12 +118,12 @@ function OverleafCursor() {
         };
       }
     }
-    
+
     console.log('Validation Response:', validation_response);
-    
+
     if (validation_response["answer"] === "yes") {
       const prompt = getAutoCompletePrompt(all_text, around_text, validation_response["reasoning"]);
-      let response = await hitOAI([{role: 'user', content: prompt}]);
+      let response = await hitOAI([{ role: 'user', content: prompt }]);
       response = response.replace('```latex', '').replace('```', '').trim().replace('`', '').replace('"', '');
       return response;
     } else {
@@ -152,7 +153,7 @@ function OverleafCursor() {
     } else if (message.type === 'AUTOCOMPLETE') {
       handle_autocomplete(message.focused_text, message.around_text, message.all_text)
         .then(response => {
-          sendResponse({text: response});
+          sendResponse({ text: response });
         })
         .catch(error => {
           console.error('Error processing autocomplete request:', error);
@@ -190,7 +191,7 @@ function getEditPrompt(code_snippet, user_request) {
 
   RETURN ONLY THE LATEX CODE AS A STRING. INCLUDE \n BETWEEN LINES OF CODE. 
   `
-  }
+}
 
 function getCheckAutocompleteNeededPrompt(focused_text) {
   return `
