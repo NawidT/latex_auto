@@ -18,7 +18,6 @@ function App() {
   let last_autocompleted_line = null;
 
   let change_since_autocomplete = true;
-  let has_autocomplete_been_triggered = false;
 
   // ELEMENTS --------------------------------------------------------------------
   edit_button.innerHTML =`
@@ -50,68 +49,65 @@ function App() {
 
   // DIFF CHECKER ALGORITHMS -------------------------------------------------------
 
-  /**
+  function autocomplete_diff(before, after) {
+    /**
    * Compute LCS matrix for a and b
    */
-  function buildLCS(a, b) {
-    const m = a.length, n = b.length;
-    const dp = Array(m+1).fill().map(() => Array(n+1).fill(0));
-    for (let i = 1; i <= m; i++) {
-      for (let j = 1; j <= n; j++) {
-        dp[i][j] = a[i-1] === b[j-1]
-          ? dp[i-1][j-1] + 1
-          : Math.max(dp[i-1][j], dp[i][j-1]);
+    function buildLCS(a, b) {
+      const m = a.length, n = b.length;
+      const dp = Array(m+1).fill().map(() => Array(n+1).fill(0));
+      for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+          dp[i][j] = a[i-1] === b[j-1]
+            ? dp[i-1][j-1] + 1
+            : Math.max(dp[i-1][j], dp[i][j-1]);
+        }
       }
+      return dp;
     }
-    return dp;
-  }
 
-  /**
+    /**
    * Walk back through the LCS matrix to build raw diff ops
    */
-  function diffRaw(a, b, dp) {
-    const ops = [];
-    let i = a.length, j = b.length;
-    while (i && j) {
-      if (a[i-1] === b[j-1]) {
-        ops.unshift({ type: 'equal',  char: a[i-1] });
-        i--; j--;
-      } else if (dp[i-1][j] >= dp[i][j-1]) {
-        ops.unshift({ type: 'delete', char: a[i-1] });
-        i--;
-      } else {
-        ops.unshift({ type: 'insert', char: b[j-1] });
-        j--;
+    function diffRaw(a, b, dp) {
+      const ops = [];
+      let i = a.length, j = b.length;
+      while (i && j) {
+        if (a[i-1] === b[j-1]) {
+          ops.unshift({ type: 'equal',  char: a[i-1] });
+          i--; j--;
+        } else if (dp[i-1][j] >= dp[i][j-1]) {
+          ops.unshift({ type: 'delete', char: a[i-1] });
+          i--;
+        } else {
+          ops.unshift({ type: 'insert', char: b[j-1] });
+          j--;
+        }
       }
+      while (i--) ops.unshift({ type: 'delete', char: a[i] });
+      while (j--) ops.unshift({ type: 'insert', char: b[j] });
+      return ops;
     }
-    while (i--) ops.unshift({ type: 'delete', char: a[i] });
-    while (j--) ops.unshift({ type: 'insert', char: b[j] });
-    return ops;
-  }
 
-  /**
-   * Merge consecutive operations of the same type into segments
-   */
-  function mergeOps(ops) {
-    if (!ops.length) return [];
-    const segs = [];
-    let { type, char: text } = ops[0];
-    for (let k = 1; k < ops.length; k++) {
-      if (ops[k].type === type) {
-        text += ops[k].char;
-      } else {
-        segs.push({ type, text });
-        ({ type, char: text } = ops[k]);
+    /**
+    * Merge consecutive operations of the same type into segments
+    */
+    function mergeOps(ops) {
+      if (!ops.length) return [];
+      const segs = [];
+      let { type, char: text } = ops[0];
+      for (let k = 1; k < ops.length; k++) {
+        if (ops[k].type === type) {
+          text += ops[k].char;
+        } else {
+          segs.push({ type, text });
+          ({ type, char: text } = ops[k]);
+        }
       }
+      segs.push({ type, text });
+      return segs;
     }
-    segs.push({ type, text });
-    return segs;
-  }
 
-  /**
-   * Main diff function
-   */
-  function autocomplete_diff(before, after) {
     const dp  = buildLCS(before, after);
     const ops = diffRaw(before, after, dp);
     return mergeOps(ops);
