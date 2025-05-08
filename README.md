@@ -7,12 +7,9 @@ This application provides intelligent autocompletion for LaTeX documents with an
 - **Smart LaTeX Autocompletion**: Suggests completions for LaTeX commands, environments, and symbols
 - **Cursor-Based UI**: Intuitive interface that follows your cursor position
 - **Context-Aware Suggestions**: Provides relevant suggestions based on the current document context
-- **Mathematical Expression Support**: Special assistance for complex mathematical notation
-- **Bibliography Integration**: Autocompletes citations from your bibliography files
-- **Customizable Suggestions**: Adapt the suggestion engine to your writing style
+
 
 ## Next Steps
 - Update the UI to have a loading icon during API calls
-- Do the whole autocomplete text
-- Handle ingesting and use better prompts
-- All Texts aren't actually "all" due to Code Mirror UI optimizations
+- AI completion focuses on instructional queries e.g. % make me a paragraph on the declaration of independence
+
