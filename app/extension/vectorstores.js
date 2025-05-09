@@ -4645,7 +4645,7 @@ export function similarity_all(cur_line_vector) {
   }
   // return similarity score and name of the vector
   return similarities.map((similarity, index) => ({
-    similarity,
+    similarity: similarity,
     name: average_vectors[index].name
   }));
 }

@@ -310,7 +310,8 @@ function App() {
       type: 'AUTOCOMPLETE', 
       around_text: around_text,
       all_text: all_text,
-      focused_text: focused_text
+      focused_text: focused_text,
+      line_text: current_line.innerText
     });
     // handle response from background script
     if (response.text === '' 
@@ -322,6 +323,7 @@ function App() {
     }
     // handle response from background script
     background_response = response.text.trim();
+    console.log('Background response:', background_response);
     if (background_response.split('\n').length == 1) {
       // ---- handle single line response ----
       console.log('Single line response:', background_response);

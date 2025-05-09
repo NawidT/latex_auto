@@ -14,7 +14,7 @@ export function getEditPrompt(code_snippet, user_request) {
     `
     }
   
-export function getAutoCompletePrompt(all_text, around_text) {
+export function getInstructionalCompletePrompt(all_text, around_text) {
     return `
     The code provided below is a snippet of a larger LaTeX codebase. Assume not all the code is provided.
     Complete the latex code in only the lines provided. Do not create new lines of code.
@@ -26,5 +26,12 @@ export function getAutoCompletePrompt(all_text, around_text) {
     ${around_text}
   
     RETURN ONLY THE LATEX CODE PROVIDED WITH THE COMPLETION CODE.
+    `
+  }
+
+
+export function getSyntacticalCompletePrompt(line_text) {
+    return `
+    RETURN ONLY ONE LINE OF LATEX CODE. Complete the latex: ${line_text}
     `
   }

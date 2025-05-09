@@ -1,5 +1,5 @@
 import { similarity_all } from './vectorstores.js';
-import { getEditPrompt, getAutoCompletePrompt } from './prompts.js';
+import { getEditPrompt, getInstructionalCompletePrompt, getSyntacticalCompletePrompt } from './prompts.js';
 
 function OverleafCursor() {
   // STATE VARIABLES ------------------------------------------------------------
@@ -54,7 +54,7 @@ function OverleafCursor() {
   }
 
   // split between instructional and syntactical completion
-  async function handle_autocomplete(focused_text, around_text, all_text) {
+  async function handle_autocomplete(focused_text, around_text, all_text, line_text) {
     if (all_text == "") return "";
 
     // get the embedding of the focused text
@@ -62,12 +62,29 @@ function OverleafCursor() {
     // get the cosine similarity between the focused embedding and the average instructional creational embedding
     const similarities = similarity_all(focused_embedding);
     console.log(similarities);
-
-    let largest_similarity = Math.max(similarities.map(similarity => similarity.similarity));
-    if (largest_similarity > 0.4) {
-      const prompt = getAutoCompletePrompt(all_text, around_text);
+    
+    // find the largest similarity
+    let largest = {
+      "similarity": -1,
+      "name": ""
+    }
+    for (let i = 0; i < similarities.length; i++) {
+      if (similarities[i]["similarity"] > largest["similarity"]) {
+        largest = similarities[i];
+      }
+    }
+    console.log('Largest similarity:', largest["similarity"]);
+    // fine-tuned threshold, different prompts for different similarities
+    if (largest["similarity"] > 0.4) {
+      let prompt = "";
+      if (largest["name"] == "instructional_creational") {
+        prompt = getInstructionalCompletePrompt(all_text, around_text);
+      } else if (largest["name"] == "unfinished_latex") {
+        prompt = getSyntacticalCompletePrompt(line_text);
+      }
       let response = await hitOAI([{role: 'user', content: prompt}]);
       response = response.replace('```latex', '').replace('```', '').trim().replace('`', '').replace('"', '');
+      console.log('Background response:', response);
       return response;
     } else {
       return "";
@@ -94,7 +111,7 @@ function OverleafCursor() {
     } else if (message.type === 'UPDATE_CODE_SNIPPET') {
       current_code_snippet = message.text
     } else if (message.type === 'AUTOCOMPLETE') {
-      handle_autocomplete(message.focused_text, message.around_text, message.all_text)
+      handle_autocomplete(message.focused_text, message.around_text, message.all_text, message.line_text)
         .then(response => {
           sendResponse({text: response});
         })
