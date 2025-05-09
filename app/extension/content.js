@@ -202,6 +202,9 @@ function App() {
     });
   }
 
+  /**
+  * Get the comment lines from the current line.
+  */
   function get_comment_lines() {
     let codebase = Array.from(document.querySelectorAll('.cm-line'));
     let cur_line_idx = codebase.indexOf(current_line);
@@ -209,6 +212,9 @@ function App() {
     return comments;
   }
 
+  /**
+  * Remove the autocompleted text from the current line.
+  */
   function remove_autocompleted_text() {
     if (current_line != null) {
       if (num_comments == 0) {
@@ -268,6 +274,9 @@ function App() {
     return ai_complete;
   }
 
+  /**
+  * Main function to handle the autocomplete feature.
+  */
   async function handle_autocomplete() {
     last_autocompleted_line = null;
     has_autocomplete_been_triggered = false;
@@ -296,12 +305,14 @@ function App() {
       all_text += line.innerText + "\n";
     });
     change_since_autocomplete = false;
+    // send message to background script
     const response = await chrome.runtime.sendMessage({ 
       type: 'AUTOCOMPLETE', 
       around_text: around_text,
       all_text: all_text,
       focused_text: focused_text
     });
+    // handle response from background script
     if (response.text === '' 
       || current_line == null // check if current line is null case when user triggered autocomplete before background responded
       || change_since_autocomplete // handles case where user moved to another line before background responded
@@ -309,12 +320,15 @@ function App() {
     ) {
       return null;
     }
+    // handle response from background script
     background_response = response.text.trim();
     if (background_response.split('\n').length == 1) {
+      // ---- handle single line response ----
       console.log('Single line response:', background_response);
       let remaining_complete = get_remaining_complete(focused_text, background_response);
       current_line.innerText += " %%% " + remaining_complete;
     } else {
+      // ---- handle multi line response ----
       console.log('Multi line response:', background_response);
       // push all lines to bottom of current line with %%% and \n between them 
       let remaining_complete = get_remaining_complete(focused_text, background_response);
@@ -326,6 +340,9 @@ function App() {
     change_since_autocomplete = true;
   }
 
+  /**
+  * Handles the case where the user presses the right arrow key to trigger autocomplete. Checks if autocomplete is needed.
+  */
   function trigger_autocomplete() {
     if (num_comments == 0) {
       if (current_line?.innerText.includes(" %%% ")) {
@@ -362,7 +379,7 @@ function App() {
     const close_text = chat_selected.getElementsByClassName("close-text")[0];
     close_text.innerText = 'Loading...';
     try {
-      // Use a simpler approach with a timeout to ensure the message port stays open
+      // FIX THIS: Use a simpler approach with a timeout to ensure the message port stays open
       const response = await new Promise((resolve) => {
         chrome.runtime.sendMessage({ type: 'EDIT_TEXT', text: current_user_input }, (response) => {
           if (chrome.runtime.lastError) {
