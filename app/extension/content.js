@@ -203,33 +203,26 @@ function App() {
   }
 
   /**
-  * Get the comment lines from the current line.
+  * Parse the codebase (Array of cm-line elements) and return the lines with " %%% ".
   */
   function get_comment_lines() {
-    let codebase = Array.from(document.querySelectorAll('.cm-line'));
-    let cur_line_idx = codebase.indexOf(current_line);
-    let comments = codebase.slice(cur_line_idx + 1, cur_line_idx + 1 + num_comments);
-    return comments;
+    return Array.from(document.querySelectorAll('.cm-line')).filter(line => line.innerText.includes("%%%"));
   }
 
   /**
-  * Remove the autocompleted text from the current line.
+  * Grabs the comment lines and removes them from the codebase.
   */
   function remove_autocompleted_text() {
     if (current_line != null) {
-      if (num_comments == 0) {
-        current_line.innerText = current_line.innerText.replace('%%%', '');
-      } else {
-        // recalc the codebase and find comment_lines
-        let comments = get_comment_lines();
-        console.log('Comment Lines:', comments);
-        // remove the comments from the codebase
-        comments.forEach(line => {
-          line.remove();
-        });
-      }
-      num_comments = 0;
+      // recalc the codebase and find comment_lines
+      let comments = get_comment_lines();
+      console.log('Comment Lines:', comments);
+      // remove the comments from the codebase
+      comments.forEach(line => {
+        line.remove();
+      });
       current_line = null;
+      num_comments = 0;
     }
   }
 
@@ -289,18 +282,11 @@ function App() {
     // find the +- 5 lines around the current line
     let start_idx = Math.max(0, cur_line_idx - 5);
     let end_idx = Math.min(codebase.length - 1, cur_line_idx + 5);
-    let around_text = "";
-    let focused_text = "";
+    let surrounded_text = "";
     let all_text = "";
     codebase.forEach((line, idx) => {
       if (idx >= start_idx && idx <= end_idx) {
-        if (idx == start_idx) {
-          focused_text += "----------------- FOCUS START ---------------------\n";
-        } else if (idx == end_idx) {
-          focused_text += "----------------- FOCUS END ---------------------\n";
-        } 
-        focused_text += line.innerText + "\n";
-        around_text += line.innerText + "\n";
+        surrounded_text += line.innerText + "\n";
       }
       all_text += line.innerText + "\n";
     });
@@ -308,16 +294,13 @@ function App() {
     // send message to background script
     const response = await chrome.runtime.sendMessage({ 
       type: 'AUTOCOMPLETE', 
-      around_text: around_text,
+      surrounded_text: surrounded_text,
       all_text: all_text,
-      focused_text: focused_text,
       line_text: current_line.innerText
     });
     // handle response from background script
-    if (response.text === '' 
-      || current_line == null // check if current line is null case when user triggered autocomplete before background responded
+    if (current_line == null // check if current line is null case when user triggered autocomplete before background responded
       || change_since_autocomplete // handles case where user moved to another line before background responded
-      || current_line.innerText === response.text.trim() // handles case where autocomplete is not needed
     ) {
       return null;
     }
@@ -382,16 +365,23 @@ function App() {
     close_text.innerText = 'Loading...';
     try {
       // FIX THIS: Use a simpler approach with a timeout to ensure the message port stays open
-      const response = await new Promise((resolve) => {
-        chrome.runtime.sendMessage({ type: 'EDIT_TEXT', text: current_user_input }, (response) => {
-          if (chrome.runtime.lastError) {
-            console.error('Error sending message:', chrome.runtime.lastError);
-            resolve({ text: "Error: " + chrome.runtime.lastError.message });
-          } else {
-            console.log('Message sent successfully, got response:', response);
-            resolve(response);
+      let response;
+      chrome.runtime.sendMessage({ type: 'EDIT_TEXT', text: current_user_input }, (resp) => {
+        if (chrome.runtime.lastError) {
+          console.error('Error sending message:', chrome.runtime.lastError);
+          response = { text: "Error: " + chrome.runtime.lastError.message };
+        } else {
+          console.log('Message sent successfully, got response:', resp);
+          response = resp;
+          
+          // Continue with the response handling here since we're in the callback
+          console.log('Background Response:', response);
+          if (response && response.text) {
+            update_selected_lines(response.text);
+            close_chat_selected();
           }
-        });
+          close_text.innerText = 'Esc to close';
+        }
       });
       
       console.log('Background Response:', response);
@@ -430,8 +420,6 @@ function App() {
       edit_button.style.display = 'none';
     } else {
       current_line = e.target.closest('.cm-line');
-      
-      // Add a small delay to ensure text selection is complete
       setTimeout(() => {
         const selection = window.getSelection();
         selectedText = selection.toString().trim();
@@ -445,7 +433,7 @@ function App() {
     }
   });
 
-  // Handle keyboard shortcut
+  // Keydowns activate the shortcuts or remove the edit button or suggested completions
   document.addEventListener('keydown',(e) => {
     change_since_autocomplete = true;
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -462,9 +450,10 @@ function App() {
       if (current_line && num_comments > 0) {
         trigger_autocomplete();
       }
-    } else {
-      remove_autocompleted_text();
+    } else if (edit_button.style.display === 'block' && !edit_button.contains(e.target)) {
+      edit_button.style.display = 'none';
     }
+    remove_autocompleted_text();
   });
 }
 

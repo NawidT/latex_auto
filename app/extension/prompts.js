@@ -2,7 +2,7 @@ export function getEditPrompt(code_snippet, user_request) {
     return `
     You are a LaTeX expert. You are given a LaTeX code snippet and a user request.
     You need to edit the LaTeX code snippet to fix the errors and improve the code.
-    Keep the code clean, short, and concise.
+    Keep the code clean, short, and concise. Assume the document is initiated, only return the edits on the snippet and any potential imports.
   
     Here is the LaTeX code snippet:
     ${code_snippet}
@@ -33,5 +33,6 @@ export function getInstructionalCompletePrompt(all_text, around_text) {
 export function getSyntacticalCompletePrompt(line_text) {
     return `
     RETURN ONLY ONE LINE OF LATEX CODE. Complete the latex: ${line_text}
+    If you need more information, return empty string.
     `
   }

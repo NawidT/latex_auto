@@ -1,4 +1,4 @@
-import { similarity_all } from './vectorstores.js';
+import { similarity_all, get_cosine_similarity, average_vectors } from './vectorstores.js';
 import { getEditPrompt, getInstructionalCompletePrompt, getSyntacticalCompletePrompt } from './prompts.js';
 
 function OverleafCursor() {
@@ -23,7 +23,7 @@ function OverleafCursor() {
     return data.data[0].embedding;
   }
 
-  async function hitOAI(messages) {
+  async function get_ai_response(messages) {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -46,7 +46,7 @@ function OverleafCursor() {
   async function handle_edit_text(user_request) {
     const prompt = getEditPrompt(current_code_snippet, user_request);
     msg_chain.push({ role: 'user', content: prompt });
-    let response = await hitOAI(msg_chain);
+    let response = await get_ai_response(msg_chain);
     // remove the ```latex and ``` from the response
     response = response.replace('```latex', '').replace('```', '');
     msg_chain.push({ role: 'assistant', content: response });
@@ -54,13 +54,13 @@ function OverleafCursor() {
   }
 
   // split between instructional and syntactical completion
-  async function handle_autocomplete(focused_text, around_text, all_text, line_text) {
+  async function create_autocomplete(unhighlighted_text, all_text, line_text) {
     if (all_text == "") return "";
 
-    // get the embedding of the focused text
-    const focused_embedding = await get_text_embedding(focused_text);
-    // get the cosine similarity between the focused embedding and the average instructional creational embedding
-    const similarities = similarity_all(focused_embedding);
+    // get the embedding of the highlighted text
+    const embedding = await get_text_embedding(unhighlighted_text);
+    // get the cosine similarity between the highlighted embedding and the average instructional creational embedding
+    const similarities = similarity_all(embedding);
     console.log(similarities);
     
     // find the largest similarity
@@ -74,24 +74,38 @@ function OverleafCursor() {
       }
     }
     console.log('Largest similarity:', largest["similarity"]);
-    // fine-tuned threshold, different prompts for different similarities
+    
+    // fine-tuned threshold, if not within select completion type, return empty string
     if (largest["similarity"] > 0.4) {
       let prompt = "";
       if (largest["name"] == "instructional_creational") {
-        prompt = getInstructionalCompletePrompt(all_text, around_text);
+        prompt = getInstructionalCompletePrompt(all_text, unhighlighted_text);
       } else if (largest["name"] == "unfinished_latex") {
         prompt = getSyntacticalCompletePrompt(line_text);
+      } else {
+        return "";
       }
-      let response = await hitOAI([{role: 'user', content: prompt}]);
+      let response = await get_ai_response([{role: 'user', content: prompt}]);
       response = response.replace('```latex', '').replace('```', '').trim().replace('`', '').replace('"', '');
+
+      if (response == "" || response === line_text) {
+        return "";
+      }
+     
+      // ensure response is not a failed answer, prevent frontend from fumbling
+      let ai_ans_embedding = await get_text_embedding(response);
+      const similarity = get_cosine_similarity(average_vectors[2]['vector'], ai_ans_embedding); // 2 is failed_answer
+      if (similarity > 0.7) {
+        return "";
+      }
+      
       console.log('Background response:', response);
       return response;
-    } else {
-      return "";
     }
+    return "";
   }
 
-  // CHROME LISTENERS ------------------------------------------------------------
+  // CHROME LISTENERS -------------------------------DOCUMENTATION READERS START HERE-----------------------------
   // Listen for extension installation
   chrome.runtime.onInstalled.addListener(() => {
     console.log('LaTeX Auto Extension Installed');
@@ -111,7 +125,14 @@ function OverleafCursor() {
     } else if (message.type === 'UPDATE_CODE_SNIPPET') {
       current_code_snippet = message.text
     } else if (message.type === 'AUTOCOMPLETE') {
-      handle_autocomplete(message.focused_text, message.around_text, message.all_text, message.line_text)
+      /**
+       * Definitions:
+       * Highlighted text: 5 lines above and below the current line but highlighted section to change
+       * Surrounded text: 5 lines above and below the current line
+       * All text: All lines in the codebase
+       * Line text: The line of code that the user is currently focused on
+       */
+      create_autocomplete(message.surrounded_text, message.all_text, message.line_text)
         .then(response => {
           sendResponse({text: response});
         })
@@ -134,8 +155,7 @@ function OverleafCursor() {
       sendResponse({ status: 'success' });
     }
   });
-
 }
 
-// Initialize the extension
+// Initialize
 OverleafCursor();
