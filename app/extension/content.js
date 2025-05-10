@@ -14,16 +14,12 @@ function App() {
   let selectedLines = [];
 
   let current_line = null; // this is the ELEMENT of the current line (cm-line)
-  let num_comments = 0;
-  let last_autocompleted_line = null;
-
   let change_since_autocomplete = true;
 
   // ELEMENTS --------------------------------------------------------------------
   edit_button.innerHTML =`
       <button class="latex-auto-edit">
         <span>Edit</span>
-        <span class="shortcut">⌘K</span>
       </button>
   `;
   chat_selected.innerHTML =`
@@ -216,13 +212,20 @@ function App() {
     if (current_line != null) {
       // recalc the codebase and find comment_lines
       let comments = get_comment_lines();
-      console.log('Comment Lines:', comments);
-      // remove the comments from the codebase
-      comments.forEach(line => {
-        line.remove();
-      });
+      if (comments.length > 0) {
+        console.log('Comment Lines:', comments);
+        // remove the comments from the codebase
+        comments.forEach(line => {
+          if (line.innerText.startsWith("%%%")) {
+            line.remove();
+          } else {
+            // find the index of %%% in the line
+            let index = line.innerText.indexOf(" %%% ");
+            line.innerText = line.innerText.substring(0, index);
+          }
+        });
+      }
       current_line = null;
-      num_comments = 0;
     }
   }
 
@@ -271,7 +274,6 @@ function App() {
   * Main function to handle the autocomplete feature.
   */
   async function handle_autocomplete() {
-    last_autocompleted_line = null;
     has_autocomplete_been_triggered = false;
     if (!change_since_autocomplete || current_line == null || current_line.innerText.includes(" %%% ") ) { 
       return null;
@@ -299,29 +301,19 @@ function App() {
       line_text: current_line.innerText
     });
     // handle response from background script
-    if (current_line == null // check if current line is null case when user triggered autocomplete before background responded
+    if (response.text == "" // handles case where background returns empty string
+      || current_line == null // check if current line is null case when user triggered autocomplete before background responded
       || change_since_autocomplete // handles case where user moved to another line before background responded
     ) {
       return null;
     }
     // handle response from background script
-    background_response = response.text.trim();
-    console.log('Background response:', background_response);
-    if (background_response.split('\n').length == 1) {
-      // ---- handle single line response ----
-      console.log('Single line response:', background_response);
-      let remaining_complete = get_remaining_complete(focused_text, background_response);
-      current_line.innerText += " %%% " + remaining_complete;
-    } else {
-      // ---- handle multi line response ----
-      console.log('Multi line response:', background_response);
-      // push all lines to bottom of current line with %%% and \n between them 
-      let remaining_complete = get_remaining_complete(focused_text, background_response);
-      console.log('Remaining complete:', remaining_complete);
-      let comments = " %%%" + remaining_complete.split('\n').join('\n%%% ');
-      current_line.innerText += comments;
-      num_comments = remaining_complete.split('\n').length;
-    }
+    let background_response = response.text.trim();
+    // push all lines to bottom of current line with %%% and \n between them 
+    let remaining_complete = get_remaining_complete(surrounded_text, background_response);
+    console.log('Remaining complete:', remaining_complete);
+    let comments = " %%%" + remaining_complete.split('\n').join('\n%%% ');
+    current_line.innerText += comments;
     change_since_autocomplete = true;
   }
 
@@ -329,25 +321,13 @@ function App() {
   * Handles the case where the user presses the right arrow key to trigger autocomplete. Checks if autocomplete is needed.
   */
   function trigger_autocomplete() {
-    if (num_comments == 0) {
-      if (current_line?.innerText.includes(" %%% ")) {
-        if (last_autocompleted_line.includes(current_line.innerText)) {
-          current_line.innerText = last_autocompleted_line;
-        } else {
-          current_line.innerText = current_line.innerText.replace('%%%', '') + last_autocompleted_line;
-        }
-      }
-    } else {
-      let comments = get_comment_lines();
-      comments.forEach(line => {
-        line.innerText = line.innerText.replace('%%%', '');
-      });
-      num_comments = 0;
-    }
+    let comments = get_comment_lines();
+    comments.forEach(line => {
+      line.innerText = line.innerText.replace('%%%', '');
+    });
     current_line = null;
     has_autocomplete_been_triggered = true;
     change_since_autocomplete = true;
-    last_autocompleted_line = null;
   }
 
   function trigger_edit(selection, selectedText) {
@@ -447,7 +427,7 @@ function App() {
     // autocomplete when right arrow key is pressed
     } else if (e.key === 'ArrowRight') {
       // Only trigger autocomplete if current_line exists and contains an autocomplete suggestion
-      if (current_line && num_comments > 0) {
+      if (current_line) {
         trigger_autocomplete();
       }
     } else if (edit_button.style.display === 'block' && !edit_button.contains(e.target)) {
