@@ -76,7 +76,7 @@ function OverleafCursor() {
     console.log('Largest similarity:', largest["similarity"]);
     
     // fine-tuned threshold, if not within select completion type, return empty string
-    if (largest["similarity"] > 0.4) {
+    if (largest["similarity"] > 0.8) {
       let prompt = "";
       if (largest["name"] == "instructional_creational") {
         prompt = getInstructionalCompletePrompt(all_text, unhighlighted_text);
@@ -95,7 +95,7 @@ function OverleafCursor() {
       // ensure response is not a failed answer, prevent frontend from fumbling
       let ai_ans_embedding = await get_text_embedding(response);
       const similarity = get_cosine_similarity(average_vectors[2]['vector'], ai_ans_embedding); // 2 is failed_answer
-      if (similarity > 0.7) {
+      if (similarity > 0.6) {
         return "";
       }
       
