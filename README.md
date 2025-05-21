@@ -3,6 +3,10 @@
 ## Overview
 This application provides intelligent autocompletion for LaTeX documents with an intuitive cursor-based user interface. It helps users write LaTeX documents more efficiently by suggesting completions for commands, environments, citations, and mathematical expressions.
 
+# Video
+
+![AI Chat Feature](https://github.com/NawidT/latex_auto/blob/main/readmestatic/LatexAutoChatVideo.mov)
+
 ## Features
 - **Smart LaTeX Autocompletion**: Suggests completions for LaTeX commands, environments, and symbols
 - **Cursor-Based UI**: Intuitive interface that follows your cursor position
