@@ -19,7 +19,8 @@ function App() {
   // ELEMENTS --------------------------------------------------------------------
   edit_button.innerHTML =`
       <button class="latex-auto-edit">
-        <span>Edit</span>
+        <span>Edit</span>\
+        <span>cmd + k</span>
       </button>
   `;
   chat_selected.innerHTML =`
@@ -43,8 +44,305 @@ function App() {
   const latex_input = chat_selected.getElementsByClassName("latex-input")[0];
   const latex_close = chat_selected.getElementsByClassName("latex-close")[0];
 
-  // DIFF CHECKER ALGORITHMS -------------------------------------------------------
+  function positionElements(element, range) {
+    const rect = range.getBoundingClientRect();
+    element.style.left = `${window.scrollX + rect.left}px`;
+    element.style.top = `${window.scrollY + rect.bottom + 10}px`;
+  }
 
+  function handle_elem_init(element) {
+    element.style.position = 'absolute';
+    element.style.display = 'none';
+    element.style.zIndex = '9999';
+    document.body.appendChild(element);
+  }
+
+  [edit_button, chat_selected].forEach(handle_elem_init);
+
+  // FUNCTIONS -------------------------------------------------------------------
+
+  /**
+  * Multi-purpose function: Parse the codebase (Array of cm-line elements) and return lines with special character " %%% ".
+  */
+   function get_comment_lines() {
+    return Array.from(document.querySelectorAll('.cm-line')).filter(line => line.innerText.includes("%%%"));
+  }
+
+  // CHAT FEATURE -------------------------------------------------------------
+
+  /**
+   * Sets CSS to open *chat_selected* to user and close *edit_button*
+   */
+  function open_chat_selected() {
+    positionElements(chat_selected, selectionRange);
+    edit_button.style.display = 'none';
+    chat_selected.style.display = 'block';
+    latex_input.focus();
+  }
+
+  /**
+   * Sets CSS to close *chat_selected* and clear the UI up
+   */
+  function close_chat_selected() {
+    positionElements(edit_button, selectionRange);
+    chat_selected.style.display = 'none';
+    current_user_input = ''; 
+    latex_input.value = '';
+    if (window.getSelection().toString().trim() !== '') {
+      edit_button.style.display = 'block';
+    } else {
+      edit_button.style.display = 'none';
+    }
+  }
+
+  /**
+   * Custom function to grab the lines (HTMLELements) depending on user selection
+   */
+  function getSelectedLines(range) {
+    const startNode = range.startContainer;
+    const endNode = range.endContainer;
+
+    const startLine = startNode.nodeType === 3 
+      ? startNode.parentElement.closest('.cm-line') 
+      : startNode.closest('.cm-line');
+  
+    const endLine = endNode.nodeType === 3 
+      ? endNode.parentElement.closest('.cm-line') 
+      : endNode.closest('.cm-line');
+  
+    if (!startLine || !endLine) return [];
+  
+    const allLines = Array.from(document.querySelectorAll('.cm-line'));
+  
+    const startIndex = allLines.indexOf(startLine);
+    const endIndex = allLines.indexOf(endLine);
+  
+    if (startIndex === -1 || endIndex === -1) return [];
+  
+    const [from, to] = [startIndex, endIndex].sort((a, b) => a - b);
+  
+    return allLines.slice(from, to + 1);
+  }
+
+
+  /**
+   * Ensures latex codebase lines integrity, too many aren't created unnecesarily.
+   * Places AI suggested code into specific lines, depending whether the AI 
+   * suggested more/less lines than user selected.
+   */
+  function update_selected_lines(new_code) {
+    new_code = new_code.trim();
+    new_code_lines = new_code.split('\n');
+    selectedLines.forEach((line, index) => {
+      if (index < selectedLines.length - 1) {
+        if (index < new_code_lines.length) { 
+          line.innerText = new_code_lines[index];
+        } else { // case where new code has less lines than selected
+          line.innerText = "";
+        }
+      } else {
+        // case where new code has more lines than selected
+        // grab the new code lines remaining
+        let remaining_lines = new_code_lines.slice(index);
+        let remaining_lines_str = remaining_lines.join('\n');
+        line.innerText = remaining_lines_str;
+      }
+    });
+  }
+
+  /**
+   * Runs when a set of lines is selected, props open the edit button to give user option to chat.
+   * Also sends backend code_snippet (selected text) ahead of time, in case user decides chat, to reduce latency after user hits submit
+   */
+  function trigger_edit() {
+    const selection = window.getSelection();
+    selectedText = selection.toString().trim();
+    if (selectedText !== '') {
+      console.log('Selected text:', selectedText);
+      chrome.runtime.sendMessage({ type: 'UPDATE_CODE_SNIPPET', text: selectedText});
+      selectionRange = selection.getRangeAt(0);
+      selectedLines = getSelectedLines(selectionRange);
+      positionElements(edit_button, selectionRange);
+      edit_button.style.display = 'block';
+    }
+  }
+
+  /**
+   * On enter/submit from *latex_input*, sends background Chrome message to handle API calls and formatting
+   * Once AI response recieved, updates lines and removes *chat_selected*
+   */
+  async function handle_edit_text() {
+    console.log('Submit via Enter:', current_user_input);
+    const close_text = chat_selected.getElementsByTagName("span")[0];
+    close_text.innerText = 'Loading...';
+    try {
+      // FIX THIS: Use a simpler approach with a timeout to ensure the message port stays open
+      let response;
+      chrome.runtime.sendMessage({ type: 'EDIT_TEXT', text: current_user_input }, (resp) => {
+        if (chrome.runtime.lastError) {
+          console.error('Error sending message:', chrome.runtime.lastError);
+          response = { text: "Error: " + chrome.runtime.lastError.message };
+        } else {
+          console.log('Message sent successfully, got response:', resp);
+          response = resp;
+          
+          // Continue with the response handling here since we're in the callback
+          console.log('Background Response:', response);
+          if (response && response.text) {
+            update_selected_lines(response.text);
+            close_chat_selected();
+          }
+          close_text.innerText = 'Esc to close';
+        }
+      });
+      
+      console.log('Background Response:', response);
+      if (response && response.text) {
+        update_selected_lines(response.text);
+        close_chat_selected();
+      }
+    } catch (error) {
+      console.error('Failed to send message to background script:', error);
+    }
+    close_text.innerText = 'Esc to close';
+  }
+
+  // AUTOCOMPLETE FEATURE -------------------------------------------------------------
+  
+  /**
+  * Grabs the comment lines and removes them from the codebase.
+  */
+  function remove_autocompleted_text() {
+    if (current_line != null) {
+      // recalc the codebase and find comment_lines
+      let comments = get_comment_lines();
+      if (comments.length > 0) {
+        console.log('Comment Lines:', comments);
+        // remove the comments from the codebase
+        comments.forEach(line => {
+          if (line.innerText.startsWith("%%%")) {
+            line.remove();
+          } else {
+            // find the index of %%% in the line
+            let index = line.innerText.indexOf(" %%% ");
+            line.innerText = line.innerText.substring(0, index);
+          }
+        });
+      }
+      current_line = null;
+    }
+  }
+
+  /**
+   * Overarching function handling the outputs of the AI such that AI changes
+   * can be embedded into latex codebase without overlaps/double-writes
+   */
+  function get_remaining_complete(focused_text, ai_complete) {
+    // remove top and bottom lines of focused_text
+    let focused_lines = focused_text.trim().split('\n');
+    focused_lines.pop();
+    focused_lines.shift();
+    let ai_lines = ai_complete.trim().split('\n');
+    let trimmed_focus_text = "";
+    focused_lines.forEach((line) => {
+      trimmed_focus_text += line.trim() + '\n'
+    })
+    let trimmed_ai_lines = [];
+    ai_lines.forEach((line) => {
+      trimmed_ai_lines.push(line.trim())
+    })
+    let n = trimmed_ai_lines.length;
+
+
+    // find the top and bottom lines of ai_lines that are not in focused_lines
+    let start_idx = 0;
+    while (start_idx < n) {
+      if (trimmed_focus_text.includes(trimmed_ai_lines.slice(0, start_idx + 1).join('\n'))) {
+        start_idx++;
+      } else {
+        break;
+      }
+    }
+    let end_idx = n - 1;
+    while (end_idx >= 0) {
+      if (trimmed_focus_text.includes(trimmed_ai_lines.slice(end_idx, n).join('\n'))) {
+        end_idx--;
+      } else {
+        break;
+      }
+    }
+    ai_complete = ai_lines.slice(start_idx, end_idx + 1).join('\n');
+    console.log('AI complete:', ai_complete);
+    let diff = autocomplete_diff(focused_text, ai_complete);
+    console.log('Diff:', diff);
+    return ai_complete;
+  }
+
+  /**
+  * Main function to handle the autocomplete feature.
+  */
+  async function handle_autocomplete() {
+    has_autocomplete_been_triggered = false;
+    if (!change_since_autocomplete || current_line == null || current_line.innerText.includes(" %%% ") ) { 
+      return null;
+    }
+
+    console.log('Handle autocomplete function called');
+
+    let codebase = Array.from(document.querySelectorAll('.cm-line'));
+    let cur_line_idx = codebase.indexOf(current_line);
+    // find the +- 5 lines around the current line
+    let start_idx = Math.max(0, cur_line_idx - 5);
+    let end_idx = Math.min(codebase.length - 1, cur_line_idx + 5);
+    let surrounded_text = "";
+    let all_text = "";
+    codebase.forEach((line, idx) => {
+      if (idx >= start_idx && idx <= end_idx) {
+        surrounded_text += line.innerText + "\n";
+      }
+      all_text += line.innerText + "\n";
+    });
+    change_since_autocomplete = false;
+    // send message to background script
+    const response = await chrome.runtime.sendMessage({ 
+      type: 'AUTOCOMPLETE', 
+      surrounded_text: surrounded_text,
+      all_text: all_text,
+      line_text: current_line.innerText
+    });
+    // handle response from background script
+    if (response.text == "" // handles case where background returns empty string
+      || current_line == null // check if current line is null case when user triggered autocomplete before background responded
+      || change_since_autocomplete // handles case where user moved to another line before background responded
+    ) {
+      return null;
+    }
+    // handle response from background script
+    let background_response = response.text.trim();
+    // push all lines to bottom of current line with %%% and \n between them 
+    let remaining_complete = get_remaining_complete(surrounded_text, background_response);
+    console.log('Remaining complete:', remaining_complete);
+    let comments = " %%%" + remaining_complete.split('\n').join('\n%%% ');
+    current_line.innerText += comments;
+    change_since_autocomplete = true;
+  }
+
+  /**
+  * Handles the case where the user presses the right arrow key to trigger autocomplete. Checks if autocomplete is needed.
+  */
+  function trigger_autocomplete() {
+    let comments = get_comment_lines();
+    comments.forEach(line => {
+      line.innerText = line.innerText.replace('%%%', '');
+    });
+    current_line = null;
+    has_autocomplete_been_triggered = true;
+    change_since_autocomplete = true;
+  }
+
+  /** 
+   * Creates the diff files comparing the changes, could be used for UI purposes 
+  */
   function autocomplete_diff(before, after) {
     /**
    * Compute LCS matrix for a and b
@@ -109,271 +407,7 @@ function App() {
     return mergeOps(ops);
   }
 
-  // FUNCTIONS -------------------------------------------------------------------
-
-  function positionElements(element,range) {
-    const rect = range.getBoundingClientRect();
-    element.style.left = `${window.scrollX + rect.left}px`;
-    element.style.top = `${window.scrollY + rect.bottom + 10}px`;
-  }
-
-  function handle_elem_init(element) {
-    element.style.position = 'absolute';
-    element.style.display = 'none';
-    element.style.zIndex = '9999';
-    document.body.appendChild(element);
-  }
-  let elements = [edit_button, chat_selected];
-  elements.forEach(handle_elem_init);
-
-  function open_chat_selected() {
-    positionElements(chat_selected, selectionRange);
-    edit_button.style.display = 'none';
-    chat_selected.style.display = 'block';
-    latex_input.focus();
-  }
-
-  function close_chat_selected() {
-    positionElements(edit_button, selectionRange);
-    chat_selected.style.display = 'none';
-    current_user_input = ''; 
-    latex_input.value = '';
-    if (window.getSelection().toString().trim() !== '') {
-      edit_button.style.display = 'block';
-    } else {
-      edit_button.style.display = 'none';
-    }
-  }
-
-  function getSelectedCmLines() {
-    const selection = window.getSelection();
-    if (!selection.rangeCount) return [];
-  
-    const range = selection.getRangeAt(0);
-    const startNode = range.startContainer;
-    const endNode = range.endContainer;
-
-    const startLine = startNode.nodeType === 3 
-      ? startNode.parentElement.closest('.cm-line') 
-      : startNode.closest('.cm-line');
-  
-    const endLine = endNode.nodeType === 3 
-      ? endNode.parentElement.closest('.cm-line') 
-      : endNode.closest('.cm-line');
-  
-    if (!startLine || !endLine) return [];
-  
-    const allLines = Array.from(document.querySelectorAll('.cm-line'));
-  
-    const startIndex = allLines.indexOf(startLine);
-    const endIndex = allLines.indexOf(endLine);
-  
-    if (startIndex === -1 || endIndex === -1) return [];
-  
-    const [from, to] = [startIndex, endIndex].sort((a, b) => a - b);
-  
-    return allLines.slice(from, to + 1);
-  }
-
-  // @param new_code: large string of code, lines are separated by \n.
-  function update_selected_lines(new_code) {
-    new_code = new_code.trim();
-    new_code_lines = new_code.split('\n');
-    console.log('New code lines:', new_code_lines);
-    console.log('Selected lines:', selectedLines);
-    selectedLines.forEach((line, index) => {
-      if (index < selectedLines.length - 1) {
-        if (index < new_code_lines.length) { 
-          line.innerText = new_code_lines[index];
-        } else { // case where new code has less lines than selected
-          line.innerText = "";
-        }
-      } else {
-        // case where new code has more lines than selected
-        // grab the new code lines remaining
-        let remaining_lines = new_code_lines.slice(index);
-        let remaining_lines_str = remaining_lines.join('\n');
-        line.innerText = remaining_lines_str;
-      }
-    });
-  }
-
-  /**
-  * Parse the codebase (Array of cm-line elements) and return the lines with " %%% ".
-  */
-  function get_comment_lines() {
-    return Array.from(document.querySelectorAll('.cm-line')).filter(line => line.innerText.includes("%%%"));
-  }
-
-  /**
-  * Grabs the comment lines and removes them from the codebase.
-  */
-  function remove_autocompleted_text() {
-    if (current_line != null) {
-      // recalc the codebase and find comment_lines
-      let comments = get_comment_lines();
-      if (comments.length > 0) {
-        console.log('Comment Lines:', comments);
-        // remove the comments from the codebase
-        comments.forEach(line => {
-          if (line.innerText.startsWith("%%%")) {
-            line.remove();
-          } else {
-            // find the index of %%% in the line
-            let index = line.innerText.indexOf(" %%% ");
-            line.innerText = line.innerText.substring(0, index);
-          }
-        });
-      }
-      current_line = null;
-    }
-  }
-
-  function get_remaining_complete(focused_text, ai_complete) {
-    // remove top and bottom lines of focused_text
-    let focused_lines = focused_text.trim().split('\n');
-    focused_lines.pop();
-    focused_lines.shift();
-    let ai_lines = ai_complete.trim().split('\n');
-    let trimmed_focus_text = "";
-    focused_lines.forEach((line) => {
-      trimmed_focus_text += line.trim() + '\n'
-    })
-    let trimmed_ai_lines = [];
-    ai_lines.forEach((line) => {
-      trimmed_ai_lines.push(line.trim())
-    })
-    let n = trimmed_ai_lines.length;
-
-
-    // find the top and bottom lines of ai_lines that are not in focused_lines
-    let start_idx = 0;
-    while (start_idx < n) {
-      if (trimmed_focus_text.includes(trimmed_ai_lines.slice(0, start_idx + 1).join('\n'))) {
-        start_idx++;
-      } else {
-        break;
-      }
-    }
-    let end_idx = n - 1;
-    while (end_idx >= 0) {
-      if (trimmed_focus_text.includes(trimmed_ai_lines.slice(end_idx, n).join('\n'))) {
-        end_idx--;
-      } else {
-        break;
-      }
-    }
-    ai_complete = ai_lines.slice(start_idx, end_idx + 1).join('\n');
-    console.log('AI complete:', ai_complete);
-    let diff = autocomplete_diff(focused_text, ai_complete);
-    console.log('Diff:', diff);
-    return ai_complete;
-  }
-
-  /**
-  * Main function to handle the autocomplete feature.
-  */
-  async function handle_autocomplete() {
-    has_autocomplete_been_triggered = false;
-    if (!change_since_autocomplete || current_line == null || current_line.innerText.includes(" %%% ") ) { 
-      return null;
-    }
-
-    let codebase = Array.from(document.querySelectorAll('.cm-line'));
-    let cur_line_idx = codebase.indexOf(current_line);
-    // find the +- 5 lines around the current line
-    let start_idx = Math.max(0, cur_line_idx - 5);
-    let end_idx = Math.min(codebase.length - 1, cur_line_idx + 5);
-    let surrounded_text = "";
-    let all_text = "";
-    codebase.forEach((line, idx) => {
-      if (idx >= start_idx && idx <= end_idx) {
-        surrounded_text += line.innerText + "\n";
-      }
-      all_text += line.innerText + "\n";
-    });
-    change_since_autocomplete = false;
-    // send message to background script
-    const response = await chrome.runtime.sendMessage({ 
-      type: 'AUTOCOMPLETE', 
-      surrounded_text: surrounded_text,
-      all_text: all_text,
-      line_text: current_line.innerText
-    });
-    // handle response from background script
-    if (response.text == "" // handles case where background returns empty string
-      || current_line == null // check if current line is null case when user triggered autocomplete before background responded
-      || change_since_autocomplete // handles case where user moved to another line before background responded
-    ) {
-      return null;
-    }
-    // handle response from background script
-    let background_response = response.text.trim();
-    // push all lines to bottom of current line with %%% and \n between them 
-    let remaining_complete = get_remaining_complete(surrounded_text, background_response);
-    console.log('Remaining complete:', remaining_complete);
-    let comments = " %%%" + remaining_complete.split('\n').join('\n%%% ');
-    current_line.innerText += comments;
-    change_since_autocomplete = true;
-  }
-
-  /**
-  * Handles the case where the user presses the right arrow key to trigger autocomplete. Checks if autocomplete is needed.
-  */
-  function trigger_autocomplete() {
-    let comments = get_comment_lines();
-    comments.forEach(line => {
-      line.innerText = line.innerText.replace('%%%', '');
-    });
-    current_line = null;
-    has_autocomplete_been_triggered = true;
-    change_since_autocomplete = true;
-  }
-
-  function trigger_edit(selection, selectedText) {
-    console.log('Trigger edit function called');
-    chrome.runtime.sendMessage({ type: 'UPDATE_CODE_SNIPPET', text: selectedText });
-    selectedLines = getSelectedCmLines();
-    selectionRange = selection.getRangeAt(0);
-    positionElements(edit_button, selectionRange);
-    edit_button.style.display = 'block';
-  }
-
-  async function handle_edit_text() {
-    console.log('Submit via Enter:', current_user_input);
-    const close_text = chat_selected.getElementsByClassName("close-text")[0];
-    close_text.innerText = 'Loading...';
-    try {
-      // FIX THIS: Use a simpler approach with a timeout to ensure the message port stays open
-      let response;
-      chrome.runtime.sendMessage({ type: 'EDIT_TEXT', text: current_user_input }, (resp) => {
-        if (chrome.runtime.lastError) {
-          console.error('Error sending message:', chrome.runtime.lastError);
-          response = { text: "Error: " + chrome.runtime.lastError.message };
-        } else {
-          console.log('Message sent successfully, got response:', resp);
-          response = resp;
-          
-          // Continue with the response handling here since we're in the callback
-          console.log('Background Response:', response);
-          if (response && response.text) {
-            update_selected_lines(response.text);
-            close_chat_selected();
-          }
-          close_text.innerText = 'Esc to close';
-        }
-      });
-      
-      console.log('Background Response:', response);
-      if (response && response.text) {
-        update_selected_lines(response.text);
-        close_chat_selected();
-      }
-    } catch (error) {
-      console.error('Failed to send message to background script:', error);
-    }
-    close_text.innerText = 'Esc to close';
-  }
+ 
 
   // EVENT LISTENERS -------------------------------------------------------------
   edit_button.onclick = () => {
@@ -401,14 +435,7 @@ function App() {
     } else {
       current_line = e.target.closest('.cm-line');
       setTimeout(() => {
-        const selection = window.getSelection();
-        selectedText = selection.toString().trim();
-        console.log('Selected text:', selectedText);
-        if (selectedText !== '') {
-          trigger_edit(selection, selectedText);
-        } else {
-          handle_autocomplete();
-        }
+        trigger_edit();
       }, 100); // 100ms delay to allow selection to complete
     }
   });
@@ -433,10 +460,12 @@ function App() {
     } else if (edit_button.style.display === 'block' && !edit_button.contains(e.target)) {
       edit_button.style.display = 'none';
     }
-    remove_autocompleted_text();
+    if (change_since_autocomplete) {
+      handle_autocomplete();
+    } else {
+      remove_autocompleted_text();
+    }
   });
 }
-
-
 
 App();
