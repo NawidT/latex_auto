@@ -4,30 +4,32 @@
   width: 30vw;
   height: 100%;
   align-items: center;
-  border: 1px solid #374151;
+  border: 1px solid #2d7d46;
   justify-content: space-between;
   padding: 0.5rem 1rem;
-  background-color: #171717;
-  color: #d4d4d4;
+  background-color: #1a1a1a;
+  color: #e0e0e0;
   font-size: 0.875rem;
   border-radius: 0.375rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 6px -1px rgba(45, 125, 70, 0.2);
 }
 
 .latex-input {
-  background-color: #171717;
+  background-color: #2a2a2a;
   font-size: 0.875rem;
-  color: white;
+  color: #e0e0e0;
   outline: none;
   height: 30px;
   width: 100%;
-  border: none;
+  border: 1px solid #2d7d46;
   padding: 0 8px;
+  border-radius: 3px;
 }
 
 .latex-input:focus {
   outline: none;
-  border: none;
+  border: 1px solid #4ca244;
+  box-shadow: 0 0 0 2px rgba(76, 162, 68, 0.2);
 }
 
 .latex-input::placeholder {
@@ -38,11 +40,13 @@
   display: flex;
   flex-direction: row;
   align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 0.5rem;
 }
 
 .footer > * {
   margin-right: 0.75rem;
-  align-content: space-between;
 }
 
 .close-text {
@@ -50,16 +54,18 @@
   color: #737373;
 }
 
-.submit-button {
-  color: #737373;
+.latex-close {
   background: none;
   border: none;
-  cursor: pointer;
+  color: #737373;
   font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
 }
 
-.submit-button:hover {
-  color: white;
+.latex-close:hover {
+  color: #4ca244;
 }
 
 .latex-auto-edit {
@@ -67,14 +73,20 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.5rem 1rem;
-    background-color: #171717;
-    color: #d4d4d4;
+    background-color: #2d7d46;
+    color: #ffffff;
     font-size: 0.875rem;
     border-radius: 0.25rem;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 6px -1px rgba(45, 125, 70, 0.2);
     margin: 5px 0;
     width: 100%;
     cursor: pointer;
+    border: none;
+    transition: background-color 0.2s ease;
+}
+
+.latex-auto-edit:hover {
+    background-color: #4ca244;
 }
 
 .latex-auto-edit > span {
@@ -82,6 +94,5 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.5rem 1rem;
-    background-color: #171717;
-    color: #d4d4d4;
+    color: #ffffff;
 }
