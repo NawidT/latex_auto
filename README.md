@@ -5,7 +5,7 @@ This application provides intelligent autocompletion for LaTeX documents with an
 
 # Video
 
-[![Watch the demo](https://img.youtube.com/vi/haGt49DaFJ4/0.jpg)](https://www.youtube.com/watch?v=haGt49DaFJ4)
+[![Watch the demo](https://i.ytimg.com/an_webp/haGt49DaFJ4/mqdefault_6s.webp?du=3000&sqp=CLrJtcEG&rs=AOn4CLC39NKO0O18oeWkfdbXIZarXxog-g)](https://www.youtube.com/watch?v=haGt49DaFJ4)
 
 ## Features
 - **Smart LaTeX Autocompletion**: Suggests completions for LaTeX commands, environments, and symbols
