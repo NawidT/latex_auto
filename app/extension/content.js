@@ -12,9 +12,15 @@ function App() {
   let current_user_input = '';
   let selectionRange = null;
   let selectedLines = [];
+  let change_since_autocomplete = true;
 
   let current_line = null; // this is the ELEMENT of the current line (cm-line)
-  let change_since_autocomplete = true;
+
+  let prev_state = { // helps do early exit (no API call) within autocomplete function
+    last_line_completed: null,
+    prev_surrounding_lines: [],
+    last_autocomplete : ""
+  }
 
   // ELEMENTS --------------------------------------------------------------------
   edit_button.innerHTML =`
@@ -287,6 +293,12 @@ function App() {
       return null;
     }
 
+    if (prev_state['last_line_completed'] == current_line.innerText ||
+      (current_line.innerText == "" && prev_state['prev_surrounding_lines'].includes(current_line))
+    ) {
+      return prev_state['last_autocomplete'];
+    }
+
     console.log('Handle autocomplete function called');
 
     let codebase = Array.from(document.querySelectorAll('.cm-line'));
@@ -296,9 +308,11 @@ function App() {
     let end_idx = Math.min(codebase.length - 1, cur_line_idx + 5);
     let surrounded_text = "";
     let all_text = "";
+    prev_state['prev_surrounding_lines'] = [];
     codebase.forEach((line, idx) => {
       if (idx >= start_idx && idx <= end_idx) {
         surrounded_text += line.innerText + "\n";
+        prev_state['prev_surrounding_lines'].push(line);
       }
       all_text += line.innerText + "\n";
     });
@@ -317,6 +331,7 @@ function App() {
     ) {
       return null;
     }
+    last_line_completed = current_line.innerText;
     // handle response from background script
     let background_response = response.text.trim();
     // push all lines to bottom of current line with %%% and \n between them 
@@ -325,6 +340,7 @@ function App() {
     let comments = " %%%" + remaining_complete.split('\n').join('\n%%% ');
     current_line.innerText += comments;
     change_since_autocomplete = true;
+    prev_state['last_autocomplete'] = remaining_complete;
   }
 
   /**
@@ -442,7 +458,6 @@ function App() {
 
   // Keydowns activate the shortcuts or remove the edit button or suggested completions
   document.addEventListener('keydown',(e) => {
-    change_since_autocomplete = true;
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
       e.preventDefault();
       if (window.getSelection().toString().trim() !== '') {
@@ -464,6 +479,7 @@ function App() {
       handle_autocomplete();
     } else {
       remove_autocompleted_text();
+      change_since_autocomplete = true;
     }
   });
 }
