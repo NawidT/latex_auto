@@ -5,7 +5,7 @@ This application provides intelligent autocompletion for LaTeX documents with an
 
 # Video
 
-![AI Chat Feature](https://github.com/NawidT/latex_auto/blob/main/readmestatic/LatexAutoChatVideo.mov)
+![AI Chat Feature](https://github.com/NawidT/latex_auto/blob/main/readmestatic/LatexAutoChatVideo.mp4)
 
 ## Features
 - **Smart LaTeX Autocompletion**: Suggests completions for LaTeX commands, environments, and symbols
