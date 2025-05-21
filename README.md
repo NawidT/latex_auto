@@ -5,7 +5,7 @@ This application provides intelligent autocompletion for LaTeX documents with an
 
 # Video
 
-![AI Chat Feature](https://github.com/NawidT/latex_auto/blob/main/readmestatic/LatexAutoChatVideo.mp4)
+[![AI Chat Feature](https://github.com/NawidT/latex_auto/blob/main/readmestatic/LatexAutoChatVideo.mp4)](https://github.com/NawidT/latex_auto/blob/main/readmestatic/LatexAutoChatVideo.mp4)
 
 ## Features
 - **Smart LaTeX Autocompletion**: Suggests completions for LaTeX commands, environments, and symbols
@@ -16,4 +16,3 @@ This application provides intelligent autocompletion for LaTeX documents with an
 ## Next Steps
 - Update the UI to have a loading icon during API calls
 - AI completion focuses on instructional queries e.g. % make me a paragraph on the declaration of independence
-
