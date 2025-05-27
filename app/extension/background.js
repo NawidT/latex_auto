@@ -6,6 +6,7 @@ function OverleafCursor() {
   let msg_chain = []; // contains messages as a dict with keys 'role' and 'content'
   let current_code_snippet = "";
   let api_key = "";
+  let model_type = "";
 
 
   // API CALLS (Embedding and Chat) ------------------------------------------------------------------
@@ -26,22 +27,77 @@ function OverleafCursor() {
   }
 
   async function get_ai_response(messages) {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${api_key}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: messages,
-        max_tokens: 1000
-      })
-    });
-    const data = await response.json();
-    
-    console.log('OpenAI Response:', data.choices[0].message.content);
-    return data.choices[0].message.content;
+    if (model_type === "openai") {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${api_key}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: messages,
+          max_tokens: 1000
+        })
+      });
+      const data = await response.json();
+
+      console.log('OpenAI Response:', data.choices[0].message.content);
+      return data.choices[0].message.content;
+
+    } else if (model_type === "gemini") {   // Gemini API with v1 beta api 
+      console.log("Gemini model type selected");
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${api_key}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: messages.map(m => ({
+            role: m.role === 'assistant' ? 'model' : m.role,
+            parts: [{ text: m.content }]
+          }))
+        }),
+      });
+
+      const data = await response.json();
+      console.log("Full Gemini API response:", JSON.stringify(data, null, 2));
+
+      if (!data.candidates || !data.candidates[0]?.content?.parts?.[0]?.text) {
+        throw new Error("Invalid Gemini API response");
+      }
+
+      console.log('Gemini Response:', data.candidates[0].content.parts[0].text);
+      return data.candidates[0].content.parts[0].text;
+
+    } else if (model_type === "claude") {
+      console.log("Claude model type selected");
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          "x-api-key": api_key,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-3-haiku-20240307",
+          max_tokens: 1000,
+          messages: messages.map(m => ({
+            role: m.role,
+            content: m.content
+          }))
+        })
+      });
+
+      const data = await response.json();
+      if (!data.content || !data.content[0]?.text) {
+        throw new Error("Invalid Claude API response");
+      }
+
+      console.log("Claude Response:", data.content[0].text);
+      return data.content[0].text;
+    }
   }
 
   // HANDLING FUNCTIONS ----------------------------------------------------------
@@ -63,7 +119,7 @@ function OverleafCursor() {
     // get the cosine similarity between the highlighted embedding and the average instructional creational embedding
     const similarities = similarity_all(embedding);
     console.log(similarities);
-    
+
     // find the largest similarity, since prompts for different autocomplete types have differing prompts
     let largest = {
       "similarity": -1,
@@ -75,7 +131,7 @@ function OverleafCursor() {
       }
     }
     console.log('Largest similarity:', largest["similarity"]);
-    
+
     // fine-tuned threshold, if not within select completion type, return empty string
     if (largest["similarity"] > 0.8) {
       let prompt = "";
@@ -86,20 +142,20 @@ function OverleafCursor() {
       } else {
         return "";
       }
-      let response = await get_ai_response([{role: 'user', content: prompt}]);
+      let response = await get_ai_response([{ role: 'user', content: prompt }]);
       response = response.replace('```latex', '').replace('```', '').trim().replace('`', '').replace('"', '');
 
       if (response == "" || response === line_text) {
         return "";
       }
-     
+
       // Final Check: ensure response is not a failed answer, prevent frontend from fumbling
       let ai_ans_embedding = await get_text_embedding(response);
       const similarity = get_cosine_similarity(average_vectors[2]['vector'], ai_ans_embedding); // 2 is failed_answer
       if (similarity > 0.6) {
         return "";
       }
-      
+
       console.log('Background response:', response);
       return response;
     }
@@ -135,7 +191,7 @@ function OverleafCursor() {
     } else if (message.type === 'AUTOCOMPLETE') {
       create_autocomplete(message.surrounded_text, message.all_text, message.line_text)
         .then(response => {
-          sendResponse({text: response});
+          sendResponse({ text: response });
         })
         .catch(error => {
           console.error('Error processing autocomplete request:', error);

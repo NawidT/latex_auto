@@ -9,7 +9,9 @@ button.addEventListener("click", function(event) {
     const modelType = document.getElementById('modelType').value;
     chrome.runtime.sendMessage({ type: 'UPDATE_MODEL_TYPE', text: modelType }, function(response) {});
 
+    console.log("Model Type: " + modelType);
 
-    window.close();
+    // keep this commented out to avoid closing the window helps with debugging 
+    //window.close();
 }
 );
