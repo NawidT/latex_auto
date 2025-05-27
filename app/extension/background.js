@@ -44,6 +44,7 @@ function OverleafCursor() {
 
       console.log('OpenAI Response:', data.choices[0].message.content);
       return data.choices[0].message.content;
+
     } else if (model_type === "gemini") {   // Gemini API with v1 beta api 
       console.log("Gemini model type selected");
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${api_key}`, {
@@ -70,12 +71,11 @@ function OverleafCursor() {
       return data.candidates[0].content.parts[0].text;
 
     } else if (model_type === "claude") {
-
       console.log("Claude model type selected");
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
-          "x-api-key": apiKey,
+          "x-api-key": api_key,
           "anthropic-version": "2023-06-01",
           "content-type": "application/json",
           "anthropic-dangerous-direct-browser-access": "true",
@@ -91,6 +91,10 @@ function OverleafCursor() {
       });
 
       const data = await response.json();
+      if (!data.content || !data.content[0]?.text) {
+        throw new Error("Invalid Claude API response");
+      }
+
       console.log("Claude Response:", data.content[0].text);
       return data.content[0].text;
     }
