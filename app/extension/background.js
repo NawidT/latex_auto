@@ -1,4 +1,4 @@
-import { similarity_all, get_cosine_similarity, average_vectors } from './vectorstores.js';
+import { similarity_all, get_cosine_similarity, average_vectors, addEmbedding } from './vectorstores.js';
 import { getEditPrompt, getInstructionalCompletePrompt, getSyntacticalCompletePrompt } from './prompts.js';
 
 function OverleafCursor() {
@@ -10,19 +10,11 @@ function OverleafCursor() {
 
   // API CALLS (Embedding and Chat) ------------------------------------------------------------------
   async function get_text_embedding(text) {
+    // Fetch embedding from Hugging Face Inference API
+    const response = await fetch(
+      'https://api-inference.huggingface.co/embeddings/sentence-transformers/all-MiniLM-L6-v2',
+      {
     const response = await fetch('https://api.openai.com/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${api_key}`
-      },
-      body: JSON.stringify({
-        model: 'text-embedding-3-small',
-        input: text
-      })
-    });
-    const data = await response.json();
-    return data.data[0].embedding;
   }
 
   async function get_ai_response(messages) {
